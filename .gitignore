@@ -39,3 +39,49 @@ yarn-error.log*
 # typescript
 *.tsbuildinfo
 next-env.d.ts
+
+# Local environment
+.env
+.env.local
+.env.development
+.env.production
+
+# Runtime output
+logs/*
+!logs/.gitkeep
+exports/*
+!exports/.gitkeep
+
+# Test output
+coverage/
+playwright-report/
+test-results/
+
+# Temporary files
+*.tmp
+*.temp
+*.log
+.DS_Store
+
+# Local environment
+.env
+.env.local
+.env.development
+.env.production
+
+# Runtime output
+logs/*
+!logs/.gitkeep
+exports/*
+!exports/.gitkeep
+
+# Test output
+coverage/
+playwright-report/
+test-results/
+
+# Temporary files
+*.tmp
+*.temp
+*.log
+.DS_Store
