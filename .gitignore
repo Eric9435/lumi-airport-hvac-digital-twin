@@ -85,3 +85,15 @@ test-results/
 *.temp
 *.log
 .DS_Store
+
+Test coverage
+
+coverage/
+
+Docker override
+
+docker-compose.override.yml
+
+Next.js configuration backup
+
+next.config.ts.backup
