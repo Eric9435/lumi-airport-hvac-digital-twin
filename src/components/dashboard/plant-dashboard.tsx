@@ -10,6 +10,8 @@ import { EnergyChart } from "@/components/energy/energy-chart";
 import { AlarmCenter } from "@/components/alarms/alarm-center";
 import { FlightSchedulePanel } from "@/components/flights/flight-schedule-panel";
 import { LumiCommandConsole } from "@/components/lumi/lumi-command-console";
+import { WorkOrderPanel } from "@/components/maintenance/work-order-panel";
+import { LumiIntelligencePanel } from "@/components/lumi/lumi-intelligence-panel";
 import { useSimulationStore } from "@/store/simulation-store";
 
 export function PlantDashboard() {
@@ -124,6 +126,11 @@ export function PlantDashboard() {
           <section className="grid gap-6 xl:grid-cols-[minmax(0,1.5fr)_minmax(360px,1fr)]">
             <EnergyChart />
             <AlarmCenter />
+          </section>
+
+          <section className="grid gap-6 xl:grid-cols-[minmax(0,1.45fr)_minmax(360px,0.8fr)]">
+            <LumiIntelligencePanel />
+            <WorkOrderPanel />
           </section>
 
           <FlightSchedulePanel />
