@@ -5,6 +5,7 @@ import { Activity, AlertTriangle, Plane, Snowflake, Zap } from "lucide-react";
 import { AhuCard } from "@/components/ahu/ahu-card";
 import { ChillerCard } from "@/components/chillers/chiller-card";
 import { KpiCard } from "@/components/dashboard/kpi-card";
+import { FlightSchedulePanel } from "@/components/flights/flight-schedule-panel";
 import { LumiCommandConsole } from "@/components/lumi/lumi-command-console";
 import { useSimulationStore } from "@/store/simulation-store";
 
@@ -113,6 +114,8 @@ export function PlantDashboard() {
             icon={AlertTriangle}
           />
         </section>
+
+        <FlightSchedulePanel />
 
         <section className="grid gap-6 xl:grid-cols-[minmax(0,1fr)_420px]">
           <div className="space-y-8">
