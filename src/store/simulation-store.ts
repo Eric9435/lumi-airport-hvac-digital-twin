@@ -11,6 +11,8 @@ import {
   stopChillerState,
 } from "@/lib/simulation/state-helpers";
 
+import type { ActiveAlarm, EnergySample } from "@/types/analytics";
+
 import type { LumiCommand, PlantState } from "@/types/hvac";
 
 export interface CommandExecutionResult {
@@ -18,10 +20,18 @@ export interface CommandExecutionResult {
   message: string;
 }
 
+interface SimulationAnalyticsState {
+  energyHistory: EnergySample[];
+  activeAlarms: ActiveAlarm[];
+}
+
 interface SimulationActions {
   hydrate: (state: PlantState) => void;
+
   resetSimulation: () => void;
+
   pauseSimulation: () => void;
+
   resumeSimulation: () => void;
 
   startChiller: (equipmentId: string) => CommandExecutionResult;
@@ -43,9 +53,21 @@ interface SimulationActions {
   ) => CommandExecutionResult;
 
   executeCommand: (command: LumiCommand) => CommandExecutionResult;
+
+  applySimulationTick: (
+    state: PlantState,
+    energySample: EnergySample,
+    alarms: ActiveAlarm[],
+  ) => void;
+
+  acknowledgeAlarm: (alarmId: string) => void;
+
+  clearEnergyHistory: () => void;
 }
 
-export type SimulationStore = PlantState & SimulationActions;
+export type SimulationStore = PlantState &
+  SimulationAnalyticsState &
+  SimulationActions;
 
 function withUpdatedPower(state: PlantState): PlantState {
   return {
@@ -58,14 +80,24 @@ function withUpdatedPower(state: PlantState): PlantState {
 export const useSimulationStore = create<SimulationStore>((set, get) => ({
   ...initialPlantState,
 
+  energyHistory: [],
+
+  activeAlarms: [],
+
   hydrate: (state) => {
-    set(withUpdatedPower(state));
+    set({
+      ...withUpdatedPower(state),
+      energyHistory: get().energyHistory,
+      activeAlarms: get().activeAlarms,
+    });
   },
 
   resetSimulation: () => {
     set({
       ...initialPlantState,
       timestamp: new Date().toISOString(),
+      energyHistory: [],
+      activeAlarms: [],
     });
   },
 
@@ -104,6 +136,7 @@ export const useSimulationStore = create<SimulationStore>((set, get) => ({
 
     const nextState: PlantState = {
       ...state,
+
       chillers: state.chillers.map((chiller) =>
         chiller.id === equipmentId ? startChillerState(chiller) : chiller,
       ),
@@ -119,10 +152,6 @@ export const useSimulationStore = create<SimulationStore>((set, get) => ({
 
   stopChiller: (equipmentId) => {
     const state = get();
-
-    const runningChillers = state.chillers.filter(
-      (chiller) => chiller.status === "running",
-    );
 
     const target = state.chillers.find((chiller) => chiller.id === equipmentId);
 
@@ -140,16 +169,21 @@ export const useSimulationStore = create<SimulationStore>((set, get) => ({
       };
     }
 
+    const runningChillers = state.chillers.filter(
+      (chiller) => chiller.status === "running",
+    );
+
     if (runningChillers.length <= 1) {
       return {
         success: false,
         message:
-          "At least one chiller must remain running. Stop command rejected by the virtual safety interlock.",
+          "At least one chiller must remain running. The virtual safety interlock rejected the command.",
       };
     }
 
     const nextState: PlantState = {
       ...state,
+
       chillers: state.chillers.map((chiller) =>
         chiller.id === equipmentId ? stopChillerState(chiller) : chiller,
       ),
@@ -180,6 +214,7 @@ export const useSimulationStore = create<SimulationStore>((set, get) => ({
 
     const nextState: PlantState = {
       ...state,
+
       ahus: state.ahus.map((ahu) =>
         ahu.id === equipmentId ? setAhuFanSpeedState(ahu, requestedSpeed) : ahu,
       ),
@@ -207,6 +242,7 @@ export const useSimulationStore = create<SimulationStore>((set, get) => ({
 
     const nextState: PlantState = {
       ...state,
+
       ahus: state.ahus.map((ahu) =>
         ahu.id === equipmentId ? setAhuFanSpeedState(ahu, 0) : ahu,
       ),
@@ -241,6 +277,7 @@ export const useSimulationStore = create<SimulationStore>((set, get) => ({
 
     const nextState: PlantState = {
       ...state,
+
       ahus: state.ahus.map((ahu) =>
         ahu.id === equipmentId ? setAhuFanSpeedState(ahu, value) : ahu,
       ),
@@ -275,6 +312,7 @@ export const useSimulationStore = create<SimulationStore>((set, get) => ({
 
     const nextState: PlantState = {
       ...state,
+
       ahus: state.ahus.map((ahu) =>
         ahu.id === equipmentId ? setAhuSetpointState(ahu, value) : ahu,
       ),
@@ -286,6 +324,49 @@ export const useSimulationStore = create<SimulationStore>((set, get) => ({
       success: true,
       message: `${equipmentId} temperature setpoint changed to ${value}°C.`,
     };
+  },
+
+  applySimulationTick: (state, energySample, alarms) => {
+    const current = get();
+
+    const acknowledgedAlarmIds = new Set(
+      current.activeAlarms
+        .filter((alarm) => alarm.acknowledged)
+        .map((alarm) => alarm.alarmId),
+    );
+
+    const activeAlarms = alarms.map((alarm) => ({
+      ...alarm,
+
+      acknowledged: acknowledgedAlarmIds.has(alarm.alarmId),
+    }));
+
+    set({
+      ...state,
+
+      activeAlarms,
+
+      energyHistory: [...current.energyHistory, energySample].slice(-120),
+    });
+  },
+
+  acknowledgeAlarm: (alarmId) => {
+    set((state) => ({
+      activeAlarms: state.activeAlarms.map((alarm) =>
+        alarm.alarmId === alarmId
+          ? {
+              ...alarm,
+              acknowledged: true,
+            }
+          : alarm,
+      ),
+    }));
+  },
+
+  clearEnergyHistory: () => {
+    set({
+      energyHistory: [],
+    });
   },
 
   executeCommand: (command) => {
@@ -317,12 +398,18 @@ export const useSimulationStore = create<SimulationStore>((set, get) => ({
           (chiller) => chiller.status === "running",
         ).length;
 
+        const runningAhus = state.ahus.filter(
+          (ahu) => ahu.status === "running",
+        ).length;
+
         return {
           success: true,
+
           message:
             `Plant operating normally. ` +
             `${runningChillers} chillers are running, ` +
-            `${state.ahus.filter((ahu) => ahu.status === "running").length} AHUs are running, ` +
+            `${runningAhus} AHUs are running, ` +
+            `${state.activeAlarmCount} alarms are active, ` +
             `and total plant power is ${state.totalPowerKw} kW.`,
         };
       }
