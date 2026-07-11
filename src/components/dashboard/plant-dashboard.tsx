@@ -5,6 +5,8 @@ import { Activity, AlertTriangle, Plane, Snowflake, Zap } from "lucide-react";
 import { AhuCard } from "@/components/ahu/ahu-card";
 import { ChillerCard } from "@/components/chillers/chiller-card";
 import { KpiCard } from "@/components/dashboard/kpi-card";
+import { DailyReportPanel } from "@/components/reports/daily-report-panel";
+import { ScenarioPanel } from "@/components/simulation/scenario-panel";
 import { SimulationRuntime } from "@/components/dashboard/simulation-runtime";
 import { EnergyChart } from "@/components/energy/energy-chart";
 import { AlarmCenter } from "@/components/alarms/alarm-center";
@@ -131,6 +133,11 @@ export function PlantDashboard() {
           <section className="grid gap-6 xl:grid-cols-[minmax(0,1.45fr)_minmax(360px,0.8fr)]">
             <LumiIntelligencePanel />
             <WorkOrderPanel />
+          </section>
+
+          <section className="grid gap-6 xl:grid-cols-[minmax(0,1.4fr)_minmax(360px,0.9fr)]">
+            <ScenarioPanel />
+            <DailyReportPanel />
           </section>
 
           <FlightSchedulePanel />
