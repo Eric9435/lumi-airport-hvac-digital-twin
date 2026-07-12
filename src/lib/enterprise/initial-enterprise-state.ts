@@ -202,16 +202,17 @@ function createCoolingTower(index: number): CoolingTowerState {
 
 export const initialEnterprisePlantState: EnterprisePlantState = {
   timestamp: now,
-  automaticControlEnabled: true,
+  automaticControlEnabled: false,
   sequenceState: "idle",
   currentSequenceId: "SEQ-INITIAL",
-  currentSequenceMessage: "Enterprise plant controller initialized.",
-  lastCompletedStep: "Initialization",
+  currentSequenceMessage:
+    "Plant stopped. Waiting for CSV replay or an explicit operator command.",
+  lastCompletedStep: "Safe startup initialized",
   failedSequenceStep: null,
 
-  occupancy: 920,
-  outdoorDryBulbTemperatureC: 32,
-  outdoorWetBulbTemperatureC: 25,
+  occupancy: 0,
+  outdoorDryBulbTemperatureC: 0,
+  outdoorWetBulbTemperatureC: 0,
   predictedCoolingLoadKw: 0,
   coolingDemandPercent: 0,
   requiredChillerCount: 0,

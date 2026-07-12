@@ -1,13 +1,10 @@
 import Link from "next/link";
 
-import { EnterprisePlantRuntime } from "@/components/enterprise/enterprise-plant-runtime";
 import { PlantTopologyMap } from "@/components/enterprise/plant-topology-map";
 
 export default function PlantTopologyPage() {
   return (
     <>
-      <EnterprisePlantRuntime />
-
       <main className="min-h-screen bg-slate-950 px-4 py-6 text-slate-100 sm:px-6 lg:px-8">
         <div className="mx-auto max-w-[1800px] space-y-6">
           <header className="flex flex-col gap-4 border-b border-slate-800 pb-5 lg:flex-row lg:items-end lg:justify-between">

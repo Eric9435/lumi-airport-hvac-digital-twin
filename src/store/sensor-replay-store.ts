@@ -7,6 +7,7 @@ import {
   parseSensorCsv,
 } from "@/lib/sensor-data/sensor-csv-parser";
 import { useEnterprisePlantStore } from "@/store/enterprise-plant-store";
+import { useSimulationStore } from "@/store/simulation-store";
 
 import type { SensorCsvParseResult, SensorCsvRow } from "@/types/sensor-csv";
 
@@ -191,20 +192,32 @@ export const useSensorReplayStore = create<SensorReplayState>((set, get) => ({
   },
 
   play: () => {
-    if (get().rows.length === 0) {
+    const state = get();
+
+    if (state.rows.length === 0 || state.status === "error") {
       return;
     }
 
-    if (get().currentIndex >= get().rows.length - 1) {
-      set({
-        currentIndex: 0,
-      });
-    }
+    const restartFromBeginning = state.currentIndex >= state.rows.length - 1;
+
+    const nextIndex = restartFromBeginning ? 0 : state.currentIndex;
 
     set({
-      status: "ready",
+      currentIndex: nextIndex,
+      status: "playing",
       message: "CSV replay is running.",
     });
+
+    /*
+     * Apply the current snapshot immediately so the plant
+     * responds as soon as Play Replay is pressed.
+     */
+    get().applyRow(nextIndex);
+
+    /*
+     * applyRow preserves the current playing status unless
+     * the snapshot is the final record or has invalid quality.
+     */
   },
 
   pause: () => {
@@ -230,6 +243,7 @@ export const useSensorReplayStore = create<SensorReplayState>((set, get) => ({
     const enterprise = useEnterprisePlantStore.getState();
 
     enterprise.stopAllEquipment();
+    useSimulationStore.getState().resetSimulation();
 
     set({
       currentIndex: 0,
@@ -241,6 +255,8 @@ export const useSensorReplayStore = create<SensorReplayState>((set, get) => ({
 
   clearImport: () => {
     useEnterprisePlantStore.getState().stopAllEquipment();
+
+    useSimulationStore.getState().resetSimulation();
 
     set({
       filename: null,

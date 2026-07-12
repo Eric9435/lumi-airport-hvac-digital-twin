@@ -1,14 +1,11 @@
 import Link from "next/link";
 
-import { EnterprisePlantRuntime } from "@/components/enterprise/enterprise-plant-runtime";
 import { EnterpriseManualControls } from "@/components/enterprise/enterprise-manual-controls";
 import { PlantSequenceOverview } from "@/components/enterprise/plant-sequence-overview";
 
 export default function PlantSequencePage() {
   return (
     <>
-      <EnterprisePlantRuntime />
-
       <main className="min-h-screen bg-slate-950 px-4 py-6 text-slate-100 sm:px-6 lg:px-8">
         <div className="mx-auto max-w-[1600px] space-y-6">
           <header className="flex flex-col gap-4 border-b border-slate-800 pb-5 lg:flex-row lg:items-end lg:justify-between">

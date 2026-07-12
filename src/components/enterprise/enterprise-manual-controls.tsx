@@ -1,7 +1,7 @@
 "use client";
 
 import { useMemo, useState } from "react";
-import { Fan, Play, Power, Snowflake, Square, Waves, Zap } from "lucide-react";
+import { Fan, Play, Power, Snowflake, Square, Waves } from "lucide-react";
 
 import { useEnterprisePlantStore } from "@/store/enterprise-plant-store";
 import { StatusPill } from "@/components/enterprise/plant-ui-helpers";

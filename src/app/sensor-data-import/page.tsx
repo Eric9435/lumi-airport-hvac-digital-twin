@@ -1,15 +1,9 @@
 import Link from "next/link";
 
-import { EnterprisePlantRuntime } from "@/components/enterprise/enterprise-plant-runtime";
 import { SensorDataImportPanel } from "@/components/sensor-data/sensor-data-import-panel";
-import { SensorReplayRuntime } from "@/components/sensor-data/sensor-replay-runtime";
-
 export default function SensorDataImportPage() {
   return (
     <>
-      <EnterprisePlantRuntime />
-      <SensorReplayRuntime />
-
       <main className="min-h-screen bg-slate-950 px-4 py-6 text-slate-100 sm:px-6 lg:px-8">
         <div className="mx-auto max-w-[1700px] space-y-6">
           <header className="flex flex-col gap-4 border-b border-slate-800 pb-5 lg:flex-row lg:items-end lg:justify-between">

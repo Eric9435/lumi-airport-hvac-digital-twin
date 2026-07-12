@@ -55,7 +55,6 @@ export function PlantDashboard() {
   return (
     <>
       <SimulationRuntime />
-
       <main className="min-h-screen bg-slate-950 px-4 py-6 text-slate-100 sm:px-6 lg:px-8">
         <div className="mx-auto max-w-[1600px] space-y-8">
           <header className="flex flex-col gap-5 border-b border-slate-800 pb-6 lg:flex-row lg:items-end lg:justify-between">
