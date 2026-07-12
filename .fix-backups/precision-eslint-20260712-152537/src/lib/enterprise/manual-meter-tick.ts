@@ -1,0 +1,315 @@
+import type {
+  CoolingTowerFanState,
+  EnterpriseMeter,
+  EnterprisePlantState,
+  EnterprisePumpState,
+  TransformerState,
+} from "@/types/enterprise-plant";
+
+const CHILLER_RATED_POWER_KW = 11;
+const STARTER_AND_CONTROL_POWER_KW = 0.35;
+const TRANSFORMER_NO_LOAD_LOSS_KW = 0.25;
+
+function clamp(value: number, minimum: number, maximum: number): number {
+  return Math.min(maximum, Math.max(minimum, value));
+}
+
+function round(value: number, decimals = 3): number {
+  const multiplier = 10 ** decimals;
+  return Math.round(value * multiplier) / multiplier;
+}
+
+function accumulate<T extends EnterpriseMeter>(
+  equipment: T,
+  running: boolean,
+  intervalSeconds: number,
+): T {
+  if (!running) {
+    return equipment;
+  }
+
+  const intervalEnergyKwh =
+    Math.max(0, equipment.powerKw) * (intervalSeconds / 3600);
+
+  return {
+    ...equipment,
+    runtimeSeconds: equipment.runtimeSeconds + intervalSeconds,
+    totalEnergyKwh: round(equipment.totalEnergyKwh + intervalEnergyKwh, 6),
+    todayEnergyKwh: round(equipment.todayEnergyKwh + intervalEnergyKwh, 6),
+  };
+}
+
+function updatePump(
+  pump: EnterprisePumpState,
+  intervalSeconds: number,
+): EnterprisePumpState {
+  return accumulate(pump, pump.status === "running", intervalSeconds);
+}
+
+function updateFan(
+  fan: CoolingTowerFanState,
+  intervalSeconds: number,
+): CoolingTowerFanState {
+  return accumulate(fan, fan.status === "running", intervalSeconds);
+}
+
+function calculateTransformerGroupLoadKw(
+  state: EnterprisePlantState,
+  transformer: TransformerState,
+): number {
+  const group = state.groups.find(
+    (item) => item.transformerId === transformer.id,
+  );
+
+  if (!group) {
+    return 0;
+  }
+
+  const primaryPump = state.primaryPumps.find(
+    (pump) => pump.id === group.primaryPumpId,
+  );
+
+  const condenserPump = state.condenserPumps.find(
+    (pump) => pump.id === group.condenserPumpId,
+  );
+
+  const starter = state.starters.find((item) => item.id === group.starterId);
+
+  const chillerRunning = starter?.status === "delta-running";
+
+  const chillerPowerKw = chillerRunning ? CHILLER_RATED_POWER_KW : 0;
+
+  const starterPowerKw = starter?.mainContactorOn
+    ? STARTER_AND_CONTROL_POWER_KW
+    : 0;
+
+  return (
+    chillerPowerKw +
+    (primaryPump?.powerKw ?? 0) +
+    (condenserPump?.powerKw ?? 0) +
+    starterPowerKw
+  );
+}
+
+function updateTransformer(
+  transformer: TransformerState,
+  state: EnterprisePlantState,
+  intervalSeconds: number,
+): TransformerState {
+  const energized =
+    transformer.status === "energized" &&
+    transformer.incomingBreakerClosed &&
+    transformer.lvBreakerClosed;
+
+  if (!energized) {
+    return {
+      ...transformer,
+      activePowerKw: 0,
+      apparentPowerKva: 0,
+      loadPercent: 0,
+      primaryCurrentA: 0,
+      secondaryCurrentA: 0,
+      powerKw: 0,
+    };
+  }
+
+  const downstreamLoadKw = calculateTransformerGroupLoadKw(state, transformer);
+
+  const powerFactor = clamp(transformer.powerFactor || 0.9, 0.75, 1);
+
+  const activePowerKw = downstreamLoadKw + TRANSFORMER_NO_LOAD_LOSS_KW;
+
+  const apparentPowerKva = activePowerKw / powerFactor;
+
+  const loadPercent =
+    transformer.ratedCapacityKva > 0
+      ? (apparentPowerKva / transformer.ratedCapacityKva) * 100
+      : 0;
+
+  const primaryCurrentA = (apparentPowerKva * 1000) / (Math.sqrt(3) * 11000);
+
+  const secondaryCurrentA = (apparentPowerKva * 1000) / (Math.sqrt(3) * 400);
+
+  const transformerLossKw =
+    TRANSFORMER_NO_LOAD_LOSS_KW + downstreamLoadKw * 0.012;
+
+  const next = {
+    ...transformer,
+    primaryVoltageKv: 11,
+    secondaryVoltageV: 400,
+    activePowerKw: round(activePowerKw),
+    apparentPowerKva: round(apparentPowerKva),
+    loadPercent: round(loadPercent, 2),
+    primaryCurrentA: round(primaryCurrentA, 2),
+    secondaryCurrentA: round(secondaryCurrentA, 2),
+    oilTemperatureC: round(clamp(30 + loadPercent * 0.12, 30, 75), 1),
+    windingTemperatureC: round(clamp(33 + loadPercent * 0.16, 33, 90), 1),
+    powerKw: round(transformerLossKw),
+    alarmMessage:
+      loadPercent >= 100
+        ? "Transformer overload."
+        : loadPercent >= 85
+          ? "Transformer load is high."
+          : null,
+  };
+
+  return accumulate(next, true, intervalSeconds);
+}
+
+function normalizeSecondaryPumpRoles(
+  pumps: EnterprisePumpState[],
+): EnterprisePumpState[] {
+  const runningIds = pumps
+    .filter((pump) => pump.status === "running")
+    .map((pump) => pump.id);
+
+  return pumps.map((pump) => {
+    if (pump.status !== "running") {
+      return {
+        ...pump,
+        dutyRole: "standby",
+      };
+    }
+
+    const runningIndex = runningIds.indexOf(pump.id);
+
+    const dutyRole: EnterprisePumpState["dutyRole"] =
+      runningIndex === 0 ? "duty" : "assist";
+
+    return {
+      ...pump,
+      dutyRole,
+    };
+  });
+}
+
+export function runManualMeterTick(
+  state: EnterprisePlantState,
+  intervalSeconds: number,
+): EnterprisePlantState {
+  const primaryPumps = state.primaryPumps.map((pump) =>
+    updatePump(pump, intervalSeconds),
+  );
+
+  const secondaryPumps = normalizeSecondaryPumpRoles(
+    state.secondaryPumps.map((pump) => updatePump(pump, intervalSeconds)),
+  );
+
+  const condenserPumps = state.condenserPumps.map((pump) =>
+    updatePump(pump, intervalSeconds),
+  );
+
+  const stateWithUpdatedPumps: EnterprisePlantState = {
+    ...state,
+    primaryPumps,
+    secondaryPumps,
+    condenserPumps,
+  };
+
+  const transformers = state.transformers.map((transformer) =>
+    updateTransformer(transformer, stateWithUpdatedPumps, intervalSeconds),
+  );
+
+  const coolingTowers = state.coolingTowers.map((tower) => {
+    const fans = tower.fans.map((fan) => updateFan(fan, intervalSeconds));
+
+    const runningFans = fans.filter((fan) => fan.status === "running");
+
+    const running = runningFans.length > 0;
+
+    const fanPowerKw = runningFans.reduce(
+      (total, fan) => total + fan.powerKw,
+      0,
+    );
+
+    return {
+      ...tower,
+      fans,
+      status: running
+        ? ("running" as const)
+        : tower.available
+          ? ("standby" as const)
+          : tower.status,
+      runtimeSeconds: tower.runtimeSeconds + (running ? intervalSeconds : 0),
+      currentHeatRejectionKw:
+        runningFans.length * (tower.ratedHeatRejectionKw / 5),
+      enteringWaterTemperatureC: running ? 32 : 29,
+      leavingWaterTemperatureC: running ? 29.5 : 29,
+      approachTemperatureC: running ? 4.5 : 4,
+      selectionReason: running
+        ? (tower.selectionReason ?? "Selected by CSV replay staging.")
+        : "Healthy standby tower.",
+      alarmMessage: fanPowerKw > 0 ? tower.alarmMessage : null,
+    };
+  });
+
+  const transformerPowerKw = transformers.reduce(
+    (total, transformer) => total + transformer.powerKw,
+    0,
+  );
+
+  const primaryPowerKw = primaryPumps.reduce(
+    (total, pump) => total + pump.powerKw,
+    0,
+  );
+
+  const secondaryPowerKw = secondaryPumps.reduce(
+    (total, pump) => total + pump.powerKw,
+    0,
+  );
+
+  const condenserPowerKw = condenserPumps.reduce(
+    (total, pump) => total + pump.powerKw,
+    0,
+  );
+
+  const coolingTowerFanPowerKw = coolingTowers.reduce(
+    (towerTotal, tower) =>
+      towerTotal +
+      tower.fans.reduce((fanTotal, fan) => fanTotal + fan.powerKw, 0),
+    0,
+  );
+
+  const runningChillers = state.starters.filter(
+    (starter) => starter.status === "delta-running",
+  ).length;
+
+  const chillerPowerKw = runningChillers * CHILLER_RATED_POWER_KW;
+
+  const totalPlantPowerKw =
+    transformerPowerKw +
+    primaryPowerKw +
+    secondaryPowerKw +
+    condenserPowerKw +
+    coolingTowerFanPowerKw +
+    chillerPowerKw;
+
+  const intervalEnergyKwh = totalPlantPowerKw * (intervalSeconds / 3600);
+
+  const totalPlantEnergyKwh = state.totalPlantEnergyKwh + intervalEnergyKwh;
+
+  const todayPlantEnergyKwh = state.todayPlantEnergyKwh + intervalEnergyKwh;
+
+  return {
+    ...state,
+    timestamp: new Date().toISOString(),
+    transformers,
+    primaryPumps,
+    secondaryPumps,
+    condenserPumps,
+    coolingTowers,
+    totalPlantPowerKw: round(totalPlantPowerKw, 3),
+    totalPlantEnergyKwh: round(totalPlantEnergyKwh, 6),
+    todayPlantEnergyKwh: round(todayPlantEnergyKwh, 6),
+    totalElectricityCostMmk: round(
+      totalPlantEnergyKwh * state.configuration.tariffMmkPerKwh,
+      2,
+    ),
+    todayElectricityCostMmk: round(
+      todayPlantEnergyKwh * state.configuration.tariffMmkPerKwh,
+      2,
+    ),
+    plantRuntimeSeconds:
+      state.plantRuntimeSeconds + (totalPlantPowerKw > 0 ? intervalSeconds : 0),
+  };
+}

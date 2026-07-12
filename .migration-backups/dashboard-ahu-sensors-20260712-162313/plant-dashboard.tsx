@@ -20,7 +20,6 @@ import { WorkOrderPanel } from "@/components/maintenance/work-order-panel";
 import { LumiIntelligencePanel } from "@/components/lumi/lumi-intelligence-panel";
 import { useSimulationStore } from "@/store/simulation-store";
 
-import { DashboardAhuSensorOverview } from "@/components/dashboard/dashboard-ahu-sensor-overview";
 export function PlantDashboard() {
   const totalPowerKw = useSimulationStore((state) => state.totalPowerKw);
 
@@ -163,8 +162,6 @@ export function PlantDashboard() {
 
           <section className="grid gap-6 xl:grid-cols-[minmax(0,1.4fr)_minmax(360px,0.9fr)]">
             <SecurityAdminPanel />
-
-            <DashboardAhuSensorOverview />
 
             <ExecutiveIntelligencePanel />
 

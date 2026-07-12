@@ -18,8 +18,6 @@ function sanitizeUser(user: SecurityUser): PublicSecurityUser {
     failedLoginAttempts: _failedLoginAttempts,
     ...publicUser
   } = user;
-  void _passwordHash;
-  void _failedLoginAttempts;
 
   return publicUser;
 }

@@ -1,0 +1,814 @@
+import type {
+  CoolingTowerFanState,
+  CoolingTowerState,
+  EnterprisePlantState,
+  EnterprisePumpState,
+  StarDeltaStarterState,
+  TransformerState,
+} from "@/types/enterprise-plant";
+
+const nowIso = (): string => new Date().toISOString();
+
+function markStarted<
+  T extends {
+    status: string;
+    lastStartedAt?: string | null;
+    startCount?: number;
+  },
+>(equipment: T, status: T["status"]): T {
+  const wasRunning =
+    equipment.status === "running" ||
+    equipment.status === "energized" ||
+    equipment.status === "delta-running";
+
+  return {
+    ...equipment,
+    status,
+    lastStartedAt: wasRunning ? equipment.lastStartedAt : nowIso(),
+    startCount: wasRunning
+      ? (equipment.startCount ?? 0)
+      : (equipment.startCount ?? 0) + 1,
+  };
+}
+
+function markStopped<
+  T extends {
+    status: string;
+    lastStoppedAt?: string | null;
+  },
+>(equipment: T, status: T["status"]): T {
+  const wasRunning =
+    equipment.status === "running" ||
+    equipment.status === "energized" ||
+    equipment.status === "delta-running";
+
+  return {
+    ...equipment,
+    status,
+    lastStoppedAt: wasRunning ? nowIso() : equipment.lastStoppedAt,
+  };
+}
+
+function startTransformer(transformer: TransformerState): TransformerState {
+  const blocked =
+    !transformer.incomingSupplyAvailable ||
+    !transformer.protectionHealthy ||
+    transformer.overcurrentTrip ||
+    transformer.earthFaultTrip ||
+    transformer.overtemperatureTrip ||
+    transformer.maintenanceLockout ||
+    transformer.mode === "maintenance" ||
+    transformer.mode === "off";
+
+  if (blocked) {
+    return {
+      ...transformer,
+      status: transformer.maintenanceLockout ? "maintenance" : "unavailable",
+      incomingBreakerClosed: false,
+      lvBreakerClosed: false,
+      alarmMessage:
+        "Manual start rejected because the transformer is unavailable, tripped or locked out.",
+    };
+  }
+
+  return markStarted(
+    {
+      ...transformer,
+      mode: "manual",
+      primaryVoltageKv: 11,
+      secondaryVoltageV: 400,
+      incomingBreakerClosed: true,
+      lvBreakerClosed: true,
+      activePowerKw: Math.max(transformer.activePowerKw, 0.8),
+      apparentPowerKva: Math.max(transformer.apparentPowerKva, 0.9),
+      powerKw: Math.max(transformer.powerKw, 0.012),
+      alarmMessage: null,
+    },
+    "energized",
+  );
+}
+
+function stopTransformer(transformer: TransformerState): TransformerState {
+  return markStopped(
+    {
+      ...transformer,
+      mode: "manual",
+      incomingBreakerClosed: false,
+      lvBreakerClosed: false,
+      primaryVoltageKv: 0,
+      secondaryVoltageV: 0,
+      activePowerKw: 0,
+      apparentPowerKva: 0,
+      loadPercent: 0,
+      primaryCurrentA: 0,
+      secondaryCurrentA: 0,
+      powerKw: 0,
+    },
+    "off",
+  );
+}
+
+function startPump(
+  pump: EnterprisePumpState,
+  requestedRole?: EnterprisePumpState["dutyRole"],
+): EnterprisePumpState {
+  const speedPercent =
+    pump.category === "secondary" ? (requestedRole === "assist" ? 75 : 85) : 85;
+
+  const ratio = speedPercent / 100;
+
+  return markStarted(
+    {
+      ...pump,
+      mode: "manual",
+      dutyRole: requestedRole ?? pump.dutyRole,
+      speedPercent,
+      flowM3h: pump.designFlowM3h * ratio,
+      headM:
+        (pump.category === "primary"
+          ? 22
+          : pump.category === "secondary"
+            ? 28
+            : 19) *
+        ratio *
+        ratio,
+      differentialPressureBar:
+        (pump.category === "secondary" ? 2.2 : 1.7) * ratio * ratio,
+      currentAmpere: pump.ratedAmpere * ratio * 0.88,
+      flowProven: true,
+      powerKw: pump.ratedPowerKw * ratio * ratio * ratio,
+    },
+    "running",
+  );
+}
+
+function stopPump(pump: EnterprisePumpState): EnterprisePumpState {
+  return markStopped(
+    {
+      ...pump,
+      mode: "manual",
+      speedPercent: 0,
+      flowM3h: 0,
+      headM: 0,
+      differentialPressureBar: 0,
+      currentAmpere: 0,
+      flowProven: false,
+      powerKw: 0,
+    },
+    pump.dutyRole === "standby" ? "standby" : "stopped",
+  );
+}
+
+function startStarter(starter: StarDeltaStarterState): StarDeltaStarterState {
+  const healthy =
+    starter.overloadHealthy &&
+    starter.phaseFailureHealthy &&
+    starter.phaseSequenceHealthy &&
+    starter.controlVoltageHealthy;
+
+  if (!healthy) {
+    return {
+      ...starter,
+      status: "tripped",
+      mainContactorOn: false,
+      starContactorOn: false,
+      deltaContactorOn: false,
+      tripReason:
+        "Manual chiller start rejected because starter protection is not healthy.",
+      lastSequenceStep: "Protection interlock failed",
+    };
+  }
+
+  return {
+    ...starter,
+    status: "delta-running",
+    mainContactorOn: true,
+    starContactorOn: false,
+    deltaContactorOn: true,
+    startRequestedAt: starter.startRequestedAt ?? nowIso(),
+    starStartedAt: starter.starStartedAt ?? nowIso(),
+    transitionStartedAt: starter.transitionStartedAt ?? nowIso(),
+    deltaStartedAt: nowIso(),
+    sequenceElapsedSeconds: 10,
+    tripReason: null,
+    lastSequenceStep:
+      "Manual group sequence completed; Delta contactor proven.",
+  };
+}
+
+function stopStarter(starter: StarDeltaStarterState): StarDeltaStarterState {
+  return {
+    ...starter,
+    status: "stopped",
+    mainContactorOn: false,
+    starContactorOn: false,
+    deltaContactorOn: false,
+    sequenceElapsedSeconds: 0,
+    lastSequenceStep: "Starter contactors opened by manual stop command.",
+  };
+}
+
+function startFan(fan: CoolingTowerFanState): CoolingTowerFanState {
+  const speedPercent = 80;
+  const ratio = speedPercent / 100;
+  const expectedCurrentAmpere = fan.ratedAmpere * Math.max(0.2, ratio);
+
+  return markStarted(
+    {
+      ...fan,
+      speedPercent,
+      powerKw: fan.ratedPowerKw * ratio * ratio * ratio,
+      expectedCurrentAmpere,
+      currentAmpere: expectedCurrentAmpere * 0.94,
+      currentLoadPercent: 94,
+      beltCondition: "normal",
+      diagnosticMessage:
+        "Motor current is consistent with the commanded fan speed.",
+      minimumOffTimeRemainingSeconds: 0,
+    },
+    "running",
+  );
+}
+
+function stopFan(fan: CoolingTowerFanState): CoolingTowerFanState {
+  return markStopped(
+    {
+      ...fan,
+      speedPercent: 0,
+      powerKw: 0,
+      currentAmpere: 0,
+      expectedCurrentAmpere: 0,
+      currentLoadPercent: 0,
+      beltCondition: "not-evaluated",
+      diagnosticMessage: "Fan is stopped; belt condition is not evaluated.",
+    },
+    "stopped",
+  );
+}
+
+function recalculateTower(
+  tower: CoolingTowerState,
+  fans: CoolingTowerFanState[],
+): CoolingTowerState {
+  const runningFans = fans.filter((fan) => fan.status === "running");
+
+  return {
+    ...tower,
+    fans,
+    status:
+      runningFans.length > 0
+        ? "running"
+        : tower.available
+          ? "standby"
+          : tower.status,
+    role:
+      runningFans.length > 0
+        ? tower.role === "standby"
+          ? "assist"
+          : tower.role
+        : tower.available
+          ? "standby"
+          : tower.role,
+    currentHeatRejectionKw:
+      runningFans.length * (tower.ratedHeatRejectionKw / 5),
+    enteringWaterTemperatureC: runningFans.length > 0 ? 32 : 29,
+    leavingWaterTemperatureC: runningFans.length > 0 ? 29.5 : 29,
+    approachTemperatureC: runningFans.length > 0 ? 4.5 : 4,
+  };
+}
+
+function findGroupByChiller(state: EnterprisePlantState, chillerId: string) {
+  return state.groups.find((group) => group.chillerId === chillerId);
+}
+
+function selectTowerForManualGroup(state: EnterprisePlantState): string | null {
+  const healthyTowers = state.coolingTowers
+    .filter(
+      (tower) =>
+        tower.available &&
+        tower.status !== "fault" &&
+        tower.status !== "maintenance",
+    )
+    .map((tower) => ({
+      tower,
+      runningFanCount: tower.fans.filter((fan) => fan.status === "running")
+        .length,
+    }))
+    .sort((left, right) => {
+      const leftHasAvailableFanCapacity =
+        left.runningFanCount > 0 &&
+        left.runningFanCount < left.tower.fans.length;
+
+      const rightHasAvailableFanCapacity =
+        right.runningFanCount > 0 &&
+        right.runningFanCount < right.tower.fans.length;
+
+      if (leftHasAvailableFanCapacity !== rightHasAvailableFanCapacity) {
+        return leftHasAvailableFanCapacity ? -1 : 1;
+      }
+
+      if (left.runningFanCount !== right.runningFanCount) {
+        return left.runningFanCount - right.runningFanCount;
+      }
+
+      if (left.tower.runtimeSeconds !== right.tower.runtimeSeconds) {
+        return left.tower.runtimeSeconds - right.tower.runtimeSeconds;
+      }
+
+      return left.tower.id.localeCompare(right.tower.id);
+    });
+
+  return healthyTowers[0]?.tower.id ?? null;
+}
+
+export function manualStartChillerGroup(
+  state: EnterprisePlantState,
+  chillerId: string,
+): EnterprisePlantState {
+  const group = findGroupByChiller(state, chillerId);
+
+  if (!group) {
+    return {
+      ...state,
+      currentSequenceMessage: `Manual start failed: ${chillerId} group was not found.`,
+      failedSequenceStep: "Group lookup",
+    };
+  }
+
+  const transformer = state.transformers.find(
+    (item) => item.id === group.transformerId,
+  );
+
+  if (!transformer) {
+    return {
+      ...state,
+      currentSequenceMessage: `Manual start failed: ${group.transformerId} was not found.`,
+      failedSequenceStep: "Transformer lookup",
+    };
+  }
+
+  const startedTransformer = startTransformer(transformer);
+
+  if (startedTransformer.status !== "energized") {
+    return {
+      ...state,
+      transformers: state.transformers.map((item) =>
+        item.id === transformer.id ? startedTransformer : item,
+      ),
+      groups: state.groups.map((item) =>
+        item.groupId === group.groupId
+          ? {
+              ...item,
+              selected: false,
+              required: false,
+              available: false,
+              status: "unavailable",
+              currentStep: "Transformer unavailable",
+              failedStep: group.transformerId,
+              message:
+                "Manual group start stopped at transformer availability check.",
+            }
+          : item,
+      ),
+      currentSequenceMessage: `Manual start failed because ${group.transformerId} is unavailable.`,
+      failedSequenceStep: group.transformerId,
+      sequenceState: "faulted",
+    };
+  }
+
+  const towerId = selectTowerForManualGroup(state);
+
+  const primaryPumps = state.primaryPumps.map((pump) =>
+    pump.id === group.primaryPumpId ? startPump(pump) : pump,
+  );
+
+  const condenserPumps = state.condenserPumps.map((pump) =>
+    pump.id === group.condenserPumpId ? startPump(pump) : pump,
+  );
+
+  const starters = state.starters.map((starter) =>
+    starter.id === group.starterId ? startStarter(starter) : starter,
+  );
+
+  const coolingTowers = state.coolingTowers.map((tower) => {
+    if (tower.id !== towerId) {
+      return tower;
+    }
+
+    let additionalFans = 2;
+
+    const fans = tower.fans.map((fan) => {
+      if (additionalFans > 0 && fan.status !== "running") {
+        additionalFans -= 1;
+        return startFan(fan);
+      }
+
+      return fan;
+    });
+
+    return recalculateTower(
+      {
+        ...tower,
+        role: tower.role === "standby" ? "assist" : tower.role,
+      },
+      fans,
+    );
+  });
+
+  return {
+    ...state,
+    automaticControlEnabled: false,
+    sequenceState: "running",
+    currentSequenceMessage: `${chillerId} manual group start completed: transformer, primary pump, condenser pump, cooling-tower fans and Star–Delta starter are running.`,
+    lastCompletedStep: `${chillerId} manual group running`,
+    failedSequenceStep: null,
+
+    transformers: state.transformers.map((item) =>
+      item.id === transformer.id ? startedTransformer : item,
+    ),
+
+    primaryPumps,
+    condenserPumps,
+    starters,
+    coolingTowers,
+
+    groups: state.groups.map((item) =>
+      item.groupId === group.groupId
+        ? {
+            ...item,
+            selected: true,
+            required: true,
+            available: true,
+            status: "running",
+            currentStep: "Manual running",
+            lastCompletedStep: "Delta contactor proven and chiller running",
+            failedStep: null,
+            message: "Manual group command started all mapped equipment.",
+          }
+        : item,
+    ),
+  };
+}
+
+export function manualStopChillerGroup(
+  state: EnterprisePlantState,
+  chillerId: string,
+): EnterprisePlantState {
+  const group = findGroupByChiller(state, chillerId);
+
+  if (!group) {
+    return state;
+  }
+
+  const starters = state.starters.map((starter) =>
+    starter.id === group.starterId ? stopStarter(starter) : starter,
+  );
+
+  const primaryPumps = state.primaryPumps.map((pump) =>
+    pump.id === group.primaryPumpId ? stopPump(pump) : pump,
+  );
+
+  const condenserPumps = state.condenserPumps.map((pump) =>
+    pump.id === group.condenserPumpId ? stopPump(pump) : pump,
+  );
+
+  const transformers = state.transformers.map((transformer) =>
+    transformer.id === group.transformerId
+      ? stopTransformer(transformer)
+      : transformer,
+  );
+
+  const remainingRunningGroups = state.groups.filter(
+    (item) => item.groupId !== group.groupId && item.status === "running",
+  ).length;
+
+  let fansToKeep = remainingRunningGroups * 2;
+
+  const coolingTowers = state.coolingTowers.map((tower) => {
+    const fans = tower.fans.map((fan) => {
+      if (fan.status === "running" && fansToKeep > 0) {
+        fansToKeep -= 1;
+        return fan;
+      }
+
+      return stopFan(fan);
+    });
+
+    return recalculateTower(tower, fans);
+  });
+
+  return {
+    ...state,
+    automaticControlEnabled: false,
+    currentSequenceMessage: `${chillerId} manual group stop completed. Cumulative runtime and energy meters were preserved.`,
+    lastCompletedStep: `${chillerId} group safely stopped`,
+    failedSequenceStep: null,
+    sequenceState: remainingRunningGroups > 0 ? "running" : "idle",
+
+    starters,
+    primaryPumps,
+    condenserPumps,
+    transformers,
+    coolingTowers,
+
+    groups: state.groups.map((item) =>
+      item.groupId === group.groupId
+        ? {
+            ...item,
+            selected: false,
+            required: false,
+            status: "stopped",
+            currentStep: "Manual stopped",
+            lastCompletedStep: "Transformer and associated equipment stopped",
+            failedStep: null,
+            message:
+              "Manual group stop completed without resetting cumulative meters.",
+          }
+        : item,
+    ),
+  };
+}
+
+export function manualStartEquipment(
+  state: EnterprisePlantState,
+  equipmentId: string,
+): EnterprisePlantState {
+  if (/^CH-\d{2}$/.test(equipmentId)) {
+    return manualStartChillerGroup(state, equipmentId);
+  }
+
+  if (/^TR-\d{2}$/.test(equipmentId)) {
+    return {
+      ...state,
+      automaticControlEnabled: false,
+      transformers: state.transformers.map((transformer) =>
+        transformer.id === equipmentId
+          ? startTransformer(transformer)
+          : transformer,
+      ),
+      currentSequenceMessage: `${equipmentId} manually energized.`,
+    };
+  }
+
+  if (/^PCHWP-\d{2}$/.test(equipmentId)) {
+    return {
+      ...state,
+      automaticControlEnabled: false,
+      primaryPumps: state.primaryPumps.map((pump) =>
+        pump.id === equipmentId ? startPump(pump) : pump,
+      ),
+      currentSequenceMessage: `${equipmentId} manually started.`,
+    };
+  }
+
+  if (/^SCHWP-\d{2}$/.test(equipmentId)) {
+    const runningSecondaryCount = state.secondaryPumps.filter(
+      (pump) => pump.status === "running",
+    ).length;
+
+    return {
+      ...state,
+      automaticControlEnabled: false,
+      secondaryPumps: state.secondaryPumps.map((pump) =>
+        pump.id === equipmentId
+          ? startPump(pump, runningSecondaryCount === 0 ? "duty" : "assist")
+          : pump,
+      ),
+      currentSequenceMessage: `${equipmentId} manually started.`,
+    };
+  }
+
+  if (/^CWP-\d{2}$/.test(equipmentId)) {
+    return {
+      ...state,
+      automaticControlEnabled: false,
+      condenserPumps: state.condenserPumps.map((pump) =>
+        pump.id === equipmentId ? startPump(pump) : pump,
+      ),
+      currentSequenceMessage: `${equipmentId} manually started.`,
+    };
+  }
+
+  if (/^SD-CH-\d{2}$/.test(equipmentId)) {
+    return {
+      ...state,
+      automaticControlEnabled: false,
+      starters: state.starters.map((starter) =>
+        starter.id === equipmentId ? startStarter(starter) : starter,
+      ),
+      currentSequenceMessage: `${equipmentId} manually placed in Delta running state.`,
+    };
+  }
+
+  if (/^CT-\d{2}-FAN-\d{2}$/.test(equipmentId)) {
+    return {
+      ...state,
+      automaticControlEnabled: false,
+      coolingTowers: state.coolingTowers.map((tower) => {
+        const fans = tower.fans.map((fan) =>
+          fan.id === equipmentId ? startFan(fan) : fan,
+        );
+
+        return recalculateTower(tower, fans);
+      }),
+      currentSequenceMessage: `${equipmentId} manually started.`,
+    };
+  }
+
+  if (/^CT-\d{2}$/.test(equipmentId)) {
+    return {
+      ...state,
+      automaticControlEnabled: false,
+      coolingTowers: state.coolingTowers.map((tower) => {
+        if (tower.id !== equipmentId) {
+          return tower;
+        }
+
+        const fans = tower.fans.map(startFan);
+
+        return recalculateTower(
+          {
+            ...tower,
+            role: tower.role === "standby" ? "assist" : tower.role,
+          },
+          fans,
+        );
+      }),
+      currentSequenceMessage: `${equipmentId} and all five fans manually started.`,
+    };
+  }
+
+  return {
+    ...state,
+    currentSequenceMessage: `Manual start ignored: ${equipmentId} is not recognized.`,
+  };
+}
+
+export function manualStopEquipment(
+  state: EnterprisePlantState,
+  equipmentId: string,
+): EnterprisePlantState {
+  if (/^CH-\d{2}$/.test(equipmentId)) {
+    return manualStopChillerGroup(state, equipmentId);
+  }
+
+  if (/^TR-\d{2}$/.test(equipmentId)) {
+    const transformer = state.transformers.find(
+      (item) => item.id === equipmentId,
+    );
+
+    if (!transformer) {
+      return state;
+    }
+
+    const group = state.groups.find(
+      (item) => item.transformerId === equipmentId,
+    );
+
+    const downstreamRunning =
+      group &&
+      (state.primaryPumps.find((item) => item.id === group.primaryPumpId)
+        ?.status === "running" ||
+        state.condenserPumps.find((item) => item.id === group.condenserPumpId)
+          ?.status === "running" ||
+        state.starters.find((item) => item.id === group.starterId)?.status ===
+          "delta-running");
+
+    if (downstreamRunning) {
+      return {
+        ...state,
+        currentSequenceMessage: `${equipmentId} stop rejected because downstream chiller-group equipment is still running. Stop ${group?.chillerId} first.`,
+        failedSequenceStep: `${equipmentId} downstream load check`,
+      };
+    }
+
+    return {
+      ...state,
+      automaticControlEnabled: false,
+      transformers: state.transformers.map((item) =>
+        item.id === equipmentId ? stopTransformer(item) : item,
+      ),
+      currentSequenceMessage: `${equipmentId} manually stopped.`,
+    };
+  }
+
+  if (/^PCHWP-\d{2}$/.test(equipmentId)) {
+    return {
+      ...state,
+      automaticControlEnabled: false,
+      primaryPumps: state.primaryPumps.map((pump) =>
+        pump.id === equipmentId ? stopPump(pump) : pump,
+      ),
+      currentSequenceMessage: `${equipmentId} manually stopped.`,
+    };
+  }
+
+  if (/^SCHWP-\d{2}$/.test(equipmentId)) {
+    return {
+      ...state,
+      automaticControlEnabled: false,
+      secondaryPumps: state.secondaryPumps.map((pump) =>
+        pump.id === equipmentId ? stopPump(pump) : pump,
+      ),
+      currentSequenceMessage: `${equipmentId} manually stopped.`,
+    };
+  }
+
+  if (/^CWP-\d{2}$/.test(equipmentId)) {
+    return {
+      ...state,
+      automaticControlEnabled: false,
+      condenserPumps: state.condenserPumps.map((pump) =>
+        pump.id === equipmentId ? stopPump(pump) : pump,
+      ),
+      currentSequenceMessage: `${equipmentId} manually stopped.`,
+    };
+  }
+
+  if (/^SD-CH-\d{2}$/.test(equipmentId)) {
+    return {
+      ...state,
+      automaticControlEnabled: false,
+      starters: state.starters.map((starter) =>
+        starter.id === equipmentId ? stopStarter(starter) : starter,
+      ),
+      currentSequenceMessage: `${equipmentId} contactors manually opened.`,
+    };
+  }
+
+  if (/^CT-\d{2}-FAN-\d{2}$/.test(equipmentId)) {
+    return {
+      ...state,
+      automaticControlEnabled: false,
+      coolingTowers: state.coolingTowers.map((tower) => {
+        const fans = tower.fans.map((fan) =>
+          fan.id === equipmentId ? stopFan(fan) : fan,
+        );
+
+        return recalculateTower(tower, fans);
+      }),
+      currentSequenceMessage: `${equipmentId} manually stopped.`,
+    };
+  }
+
+  if (/^CT-\d{2}$/.test(equipmentId)) {
+    return {
+      ...state,
+      automaticControlEnabled: false,
+      coolingTowers: state.coolingTowers.map((tower) =>
+        tower.id === equipmentId
+          ? recalculateTower(tower, tower.fans.map(stopFan))
+          : tower,
+      ),
+      currentSequenceMessage: `${equipmentId} and all five fans manually stopped.`,
+    };
+  }
+
+  return {
+    ...state,
+    currentSequenceMessage: `Manual stop ignored: ${equipmentId} is not recognized.`,
+  };
+}
+
+export function manualStartAll(
+  state: EnterprisePlantState,
+): EnterprisePlantState {
+  return ["CH-01", "CH-02", "CH-03", "CH-04"].reduce<EnterprisePlantState>(
+    (nextState, chillerId) => manualStartChillerGroup(nextState, chillerId),
+    {
+      ...state,
+      automaticControlEnabled: false,
+    },
+  );
+}
+
+export function manualStopAll(
+  state: EnterprisePlantState,
+): EnterprisePlantState {
+  let nextState = ["CH-04", "CH-03", "CH-02", "CH-01"].reduce(
+    (currentState, chillerId) =>
+      manualStopChillerGroup(currentState, chillerId),
+    {
+      ...state,
+      automaticControlEnabled: false,
+    },
+  );
+
+  nextState = {
+    ...nextState,
+
+    secondaryPumps: nextState.secondaryPumps.map(stopPump),
+
+    coolingTowers: nextState.coolingTowers.map((tower) =>
+      recalculateTower(tower, tower.fans.map(stopFan)),
+    ),
+
+    sequenceState: "idle",
+    currentSequenceMessage:
+      "Manual Stop All completed. All plant equipment is stopped and cumulative meters are preserved.",
+    lastCompletedStep: "Complete manual plant shutdown",
+    failedSequenceStep: null,
+  };
+
+  return nextState;
+}
