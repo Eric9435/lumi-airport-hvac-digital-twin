@@ -99,3 +99,4 @@ Next.js configuration backup
 next.config.ts.backup
 
 !.env.example
+.fix-backups/

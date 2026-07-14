@@ -1,6 +1,7 @@
 import Link from "next/link";
 
 import { EnterpriseManualControls } from "@/components/enterprise/enterprise-manual-controls";
+import LivePlantSequenceTimeline from "@/components/enterprise/live-plant-sequence-timeline";
 import { PlantSequenceOverview } from "@/components/enterprise/plant-sequence-overview";
 
 export default function PlantSequencePage() {
@@ -39,6 +40,8 @@ export default function PlantSequencePage() {
           </header>
 
           <EnterpriseManualControls />
+
+          <LivePlantSequenceTimeline />
 
           <PlantSequenceOverview />
         </div>

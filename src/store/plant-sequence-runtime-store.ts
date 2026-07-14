@@ -1,12 +1,20 @@
 import { create } from "zustand";
 
 import {
-  getSequenceStep,
   getRemainingSeconds,
+  getSequenceStep,
+  PLANT_SEQUENCE_STEPS,
 } from "@/lib/enterprise/plant-sequence-engine";
+
+const TOTAL_SEQUENCE_DURATION_SECONDS = PLANT_SEQUENCE_STEPS.reduce(
+  (total, step) => total + step.duration,
+  0,
+);
 
 interface PlantSequenceRuntime {
   active: boolean;
+
+  completed: boolean;
 
   elapsed: number;
 
@@ -28,6 +36,8 @@ interface PlantSequenceRuntime {
 export const usePlantSequenceRuntime = create<PlantSequenceRuntime>((set) => ({
   active: false,
 
+  completed: false,
+
   elapsed: 0,
 
   equipment: "",
@@ -42,15 +52,22 @@ export const usePlantSequenceRuntime = create<PlantSequenceRuntime>((set) => ({
     set({
       active: true,
 
+      completed: false,
+
       elapsed: 0,
 
-      equipment: "Controller",
+      equipment: PLANT_SEQUENCE_STEPS[0]?.equipment ?? "Controller",
 
-      action: "Demand detected",
+      action: PLANT_SEQUENCE_STEPS[0]?.action ?? "Cooling demand analysis",
 
-      remaining: 5,
+      remaining: PLANT_SEQUENCE_STEPS[0]?.duration ?? 0,
 
-      events: ["CSV cooling demand detected"],
+      events: [
+        "0s | CSV cooling demand detected",
+        `0s | ${PLANT_SEQUENCE_STEPS[0]?.equipment ?? "Controller"} | ${
+          PLANT_SEQUENCE_STEPS[0]?.action ?? "Cooling demand analysis"
+        }`,
+      ],
     }),
 
   tick: () =>
@@ -59,13 +76,48 @@ export const usePlantSequenceRuntime = create<PlantSequenceRuntime>((set) => ({
 
       const elapsed = state.elapsed + 1;
 
+      if (elapsed >= TOTAL_SEQUENCE_DURATION_SECONDS) {
+        const finalStep = PLANT_SEQUENCE_STEPS[PLANT_SEQUENCE_STEPS.length - 1];
+
+        const completionEvent =
+          `${TOTAL_SEQUENCE_DURATION_SECONDS}s | ` + "Plant sequence completed";
+
+        return {
+          ...state,
+
+          active: false,
+
+          completed: true,
+
+          elapsed: TOTAL_SEQUENCE_DURATION_SECONDS,
+
+          equipment: finalStep?.equipment ?? "AHU",
+
+          action: "Plant sequence completed",
+
+          remaining: 0,
+
+          events: state.events.includes(completionEvent)
+            ? state.events
+            : [...state.events, completionEvent],
+        };
+      }
+
       const step = getSequenceStep(elapsed);
 
       const remaining = getRemainingSeconds(elapsed);
 
-      const event = `${elapsed}s | ${step.equipment} | ${step.action}`;
+      const previousStep = elapsed > 0 ? getSequenceStep(elapsed - 1) : step;
+
+      const stepChanged = previousStep.id !== step.id;
+
+      const event = stepChanged
+        ? `${elapsed}s | ${step.equipment} | ${step.action}`
+        : null;
 
       return {
+        ...state,
+
         elapsed,
 
         equipment: step.equipment,
@@ -74,17 +126,22 @@ export const usePlantSequenceRuntime = create<PlantSequenceRuntime>((set) => ({
 
         remaining,
 
-        active: remaining > 0,
+        active: true,
 
-        events: state.events.includes(event)
-          ? state.events
-          : [...state.events, event],
+        completed: false,
+
+        events:
+          event && !state.events.includes(event)
+            ? [...state.events, event]
+            : state.events,
       };
     }),
 
   reset: () =>
     set({
       active: false,
+
+      completed: false,
 
       elapsed: 0,
 
