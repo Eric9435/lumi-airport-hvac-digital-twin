@@ -1,356 +1,786 @@
 import { create } from "zustand";
 
-import {
-  getRemainingSeconds,
-  getSequenceStep,
-  PLANT_SEQUENCE_STEPS,
-} from "@/lib/enterprise/plant-sequence-engine";
+import { PLANT_SEQUENCE_STEPS } from "@/lib/enterprise/plant-sequence-engine";
 import { useEnterprisePlantStore } from "@/store/enterprise-plant-store";
 
-const MAX_CHILLER_GROUPS = 4;
+import type { PlantSequenceStep } from "@/lib/enterprise/plant-sequence-engine";
+import type {
+  PlantSequenceEvent,
+  PlantSequenceState,
+} from "@/types/enterprise-plant";
 
-const TOTAL_SEQUENCE_DURATION_SECONDS = PLANT_SEQUENCE_STEPS.reduce(
-  (total, step) => total + step.duration,
-  0,
-);
+const MAX_CHILLER_GROUPS = 4;
+const SEQUENCE_INTERVAL_UTILIZATION = 0.85;
+
+export type GroupSequenceDirection = "startup" | "shutdown";
+export type GroupSequenceStatus = "queued" | "running" | "completed";
+
+export interface CsvSequenceRequest {
+  targetChillers: number;
+  csvTimestamp: string;
+  nextCsvTimestamp: string | null;
+  csvIntervalSeconds: number;
+  replayIntervalMilliseconds: number;
+}
+
+export interface GroupSequenceProgress {
+  groupId: string;
+  chillerId: string;
+  direction: GroupSequenceDirection;
+  status: GroupSequenceStatus;
+  currentEquipment: string;
+  currentAction: string;
+  currentStepRemainingSeconds: number;
+  elapsedSeconds: number;
+  totalSeconds: number;
+  csvTimestamp: string;
+  nextCsvTimestamp: string | null;
+}
+
+interface PlannedSequenceStep extends PlantSequenceStep {
+  groupNumber: number;
+  direction: GroupSequenceDirection;
+  durationSeconds: number;
+  csvTimestamp: string;
+}
 
 interface PlantSequenceRuntime {
   active: boolean;
-
   completed: boolean;
-
-  elapsed: number;
-
-  equipment: string;
-
-  action: string;
-
-  remaining: number;
-
-  requiredChillers: number;
-
+  targetChillers: number;
+  csvTimestamp: string | null;
+  nextCsvTimestamp: string | null;
+  csvIntervalSeconds: number;
+  replayIntervalMilliseconds: number;
+  simulatedSecondsPerRealMillisecond: number;
+  plan: PlannedSequenceStep[];
+  currentPlanIndex: number;
+  currentStepElapsedSeconds: number;
+  groupProgress: Record<string, GroupSequenceProgress>;
   events: string[];
+  pendingRequest: CsvSequenceRequest | null;
 
-  startSequence: (requiredChillers?: number) => void;
-
-  tick: () => void;
-
+  requestSequence: (request: CsvSequenceRequest) => void;
+  tick: (realMilliseconds?: number) => void;
   reset: () => void;
 }
 
-function clampRequiredChillers(requiredChillers: number) {
-  return Math.min(
-    MAX_CHILLER_GROUPS,
-    Math.max(0, Math.round(requiredChillers)),
+const SHUTDOWN_SEQUENCE_STEPS: PlantSequenceStep[] = [
+  {
+    id: "shutdown-analysis",
+    equipment: "Controller",
+    action: "Confirming CSV stage-down demand",
+    duration: 5,
+  },
+  {
+    id: "shutdown-chiller",
+    equipment: "Chiller Compressor",
+    action: "Unloading and stopping compressor",
+    duration: 30,
+  },
+  {
+    id: "shutdown-starter",
+    equipment: "Star Delta Starter",
+    action: "Opening motor starter contactors",
+    duration: 10,
+  },
+  {
+    id: "shutdown-tower",
+    equipment: "Cooling Tower",
+    action: "Cooling-tower fan run-on and stop",
+    duration: 20,
+  },
+  {
+    id: "shutdown-condenser-pump",
+    equipment: "Condenser Pump",
+    action: "Condenser-water pump run-on and stop",
+    duration: 20,
+  },
+  {
+    id: "shutdown-primary-pump",
+    equipment: "Primary CHW Pump",
+    action: "Chilled-water pump run-on and stop",
+    duration: 20,
+  },
+  {
+    id: "shutdown-transformer",
+    equipment: "Transformer",
+    action: "Opening LV and incoming breakers",
+    duration: 15,
+  },
+  {
+    id: "shutdown-complete",
+    equipment: "Controller",
+    action: "Confirming group standby",
+    duration: 5,
+  },
+];
+
+function clampChillerCount(value: number): number {
+  return Math.min(MAX_CHILLER_GROUPS, Math.max(0, Math.round(value)));
+}
+
+function suffix(groupNumber: number): string {
+  return String(groupNumber).padStart(2, "0");
+}
+
+function groupId(groupNumber: number): string {
+  return `GROUP-${suffix(groupNumber)}`;
+}
+
+function chillerId(groupNumber: number): string {
+  return `CH-${suffix(groupNumber)}`;
+}
+
+function equipmentId(prefix: string, groupNumber: number): string {
+  return `${prefix}-${suffix(groupNumber)}`;
+}
+
+function starterId(groupNumber: number): string {
+  return `SD-CH-${suffix(groupNumber)}`;
+}
+
+function towerFanIds(groupNumber: number): string[] {
+  return [1, 2].map(
+    (fanNumber) =>
+      `CT-${suffix(groupNumber)}-FAN-${String(fanNumber).padStart(2, "0")}`,
   );
 }
 
-function equipmentId(prefix: string, groupNumber: number) {
-  return `${prefix}-${String(groupNumber).padStart(2, "0")}`;
+function setGroupState(
+  groupNumber: number,
+  patch: {
+    status?: "starting" | "stopping" | "running" | "standby";
+    currentStep?: string;
+    message?: string;
+    required?: boolean;
+    selected?: boolean;
+    lastCompletedStep?: string;
+  },
+): void {
+  useEnterprisePlantStore.setState((state) => ({
+    groups: state.groups.map((group) =>
+      group.groupId === groupId(groupNumber)
+        ? {
+            ...group,
+            ...patch,
+          }
+        : group,
+    ),
+  }));
 }
 
-function startRequiredEquipment(
-  equipment: string,
-  requiredChillers: number,
-  elapsed: number,
-) {
-  const count = clampRequiredChillers(requiredChillers);
+function sequenceStateForStep(step: PlannedSequenceStep): PlantSequenceState {
+  if (step.direction === "shutdown") {
+    return "stopping-group";
+  }
 
-  if (count === 0) return;
+  const states = {
+    load: "calculating-demand",
+    transformer: "energizing-transformer",
+    "chw-pump": "starting-primary-pump",
+    flow: "proving-evaporator-flow",
+    "condenser-pump": "starting-condenser-pump",
+    tower: "staging-cooling-towers",
+    "star-delta": "starting-star-delta",
+    chiller: "starting-chiller",
+    ahu: "running",
+  } as const;
 
-  const enterpriseStore = useEnterprisePlantStore.getState();
+  return states[step.id as keyof typeof states] ?? "running";
+}
 
-  switch (equipment) {
-    case "Controller": {
-      useEnterprisePlantStore.setState({
-        sequenceState: "calculating-demand",
-        currentSequenceMessage: `CSV sequence started for ${count} required chiller group(s).`,
-        failedSequenceStep: null,
-      });
+function eventCategory(
+  step: PlannedSequenceStep,
+): PlantSequenceEvent["category"] {
+  if (step.equipment === "Transformer") return "transformer";
+  if (step.equipment.includes("Pump")) return "pump";
+  if (step.equipment === "Cooling Tower") return "cooling-tower";
+  if (step.equipment === "Star Delta Starter") return "starter";
+  if (step.equipment === "Chiller Compressor") return "chiller";
 
-      break;
+  return "plant";
+}
+
+function eventEquipmentId(step: PlannedSequenceStep): string {
+  switch (step.equipment) {
+    case "Controller":
+      return groupId(step.groupNumber);
+
+    case "Transformer":
+      return equipmentId("TR", step.groupNumber);
+
+    case "Primary CHW Pump":
+      return equipmentId("PCHWP", step.groupNumber);
+
+    case "Flow Sensor":
+      return `${equipmentId("PCHWP", step.groupNumber)}-FLOW`;
+
+    case "Condenser Pump":
+      return equipmentId("CWP", step.groupNumber);
+
+    case "Cooling Tower":
+      return equipmentId("CT", step.groupNumber);
+
+    case "Star Delta Starter":
+      return starterId(step.groupNumber);
+
+    case "Chiller Compressor":
+      return chillerId(step.groupNumber);
+
+    case "AHU":
+      return `AHU-${suffix(step.groupNumber)}`;
+
+    default:
+      return `${groupId(step.groupNumber)}-${step.id}`;
+  }
+}
+
+function appendEvent(
+  step: PlannedSequenceStep,
+  result: PlantSequenceEvent["result"],
+  message: string,
+): void {
+  const timestamp = new Date().toISOString();
+
+  const sequenceId =
+    `CSV-${step.csvTimestamp}-` +
+    `${groupId(step.groupNumber)}-${step.direction}`;
+
+  /*
+   * This ID is deterministic for one CSV row, group, step and result.
+   * Repeated runtime calls therefore cannot append the same event twice.
+   */
+  const eventId = `${sequenceId}-${step.id}-${result}`;
+
+  const event: PlantSequenceEvent = {
+    id: eventId,
+    timestamp,
+    sequenceId,
+    equipmentId: eventEquipmentId(step),
+    category: eventCategory(step),
+    action: step.action,
+    result,
+    source: "automatic",
+    message:
+      `${groupId(step.groupNumber)} · ` +
+      `${new Date(step.csvTimestamp).toLocaleTimeString()} · ${message}`,
+  };
+
+  useEnterprisePlantStore.setState((state) => {
+    const duplicate = state.sequenceEvents.some(
+      (existingEvent) => existingEvent.id === eventId,
+    );
+
+    if (duplicate) {
+      return {
+        sequenceEvents: state.sequenceEvents,
+      };
     }
 
-    case "Transformer": {
-      for (let index = 1; index <= count; index += 1) {
-        enterpriseStore.startEquipment(equipmentId("TR", index));
+    return {
+      sequenceEvents: [...state.sequenceEvents, event].slice(-200),
+    };
+  });
+}
+
+function beginStep(step: PlannedSequenceStep): void {
+  const mode = step.direction === "startup" ? "startup" : "shutdown";
+
+  setGroupState(step.groupNumber, {
+    status: step.direction === "startup" ? "starting" : "stopping",
+    currentStep: step.action,
+    message: `CSV ${mode}: ${step.action}.`,
+    required: step.direction === "startup",
+    selected: true,
+  });
+
+  useEnterprisePlantStore.setState({
+    sequenceState: sequenceStateForStep(step),
+    currentSequenceMessage:
+      `${groupId(step.groupNumber)} ${mode}: ${step.action} ` +
+      `(${step.durationSeconds}s simulated).`,
+    failedSequenceStep: null,
+  });
+
+  appendEvent(step, "information", `${step.action} started.`);
+}
+
+function completeStartupStep(step: PlannedSequenceStep): void {
+  const groupNumber = step.groupNumber;
+
+  switch (step.id) {
+    case "transformer":
+      useEnterprisePlantStore
+        .getState()
+        .startEquipment(equipmentId("TR", groupNumber));
+      break;
+
+    case "chw-pump":
+      useEnterprisePlantStore
+        .getState()
+        .startEquipment(equipmentId("PCHWP", groupNumber));
+      useEnterprisePlantStore.setState((state) => ({
+        primaryPumps: state.primaryPumps.map((pump) =>
+          pump.id === equipmentId("PCHWP", groupNumber)
+            ? { ...pump, flowProven: false }
+            : pump,
+        ),
+      }));
+      break;
+
+    case "flow":
+      useEnterprisePlantStore.setState((state) => ({
+        primaryPumps: state.primaryPumps.map((pump) =>
+          pump.id === equipmentId("PCHWP", groupNumber)
+            ? { ...pump, flowProven: true }
+            : pump,
+        ),
+      }));
+      break;
+
+    case "condenser-pump":
+      useEnterprisePlantStore
+        .getState()
+        .startEquipment(equipmentId("CWP", groupNumber));
+      break;
+
+    case "tower":
+      for (const fanId of towerFanIds(groupNumber)) {
+        useEnterprisePlantStore.getState().startEquipment(fanId);
       }
-
-      useEnterprisePlantStore.setState({
-        sequenceState: "energizing-transformer",
-        currentSequenceMessage: `${count} transformer(s) energized by CSV sequence at ${elapsed}s.`,
-        failedSequenceStep: null,
-      });
-
       break;
-    }
 
-    case "Primary CHW Pump": {
-      for (let index = 1; index <= count; index += 1) {
-        enterpriseStore.startEquipment(equipmentId("PCHWP", index));
-      }
-
-      useEnterprisePlantStore.setState({
-        sequenceState: "starting-primary-pump",
-        currentSequenceMessage: `${count} primary chilled-water pump(s) started at ${elapsed}s.`,
-        failedSequenceStep: null,
-      });
-
+    case "star-delta":
+      useEnterprisePlantStore.getState().startEquipment(starterId(groupNumber));
       break;
-    }
 
-    case "Flow Sensor": {
-      useEnterprisePlantStore.setState({
-        sequenceState: "proving-evaporator-flow",
-        currentSequenceMessage: `Evaporator flow proof confirmed for ${count} group(s) at ${elapsed}s.`,
-        failedSequenceStep: null,
+    case "chiller":
+      setGroupState(groupNumber, {
+        status: "running",
+        required: true,
+        selected: true,
+        currentStep: "Chiller running",
+        lastCompletedStep: "Delta proven and compressor available",
+        message: "CSV startup sequence completed for this group.",
       });
-
       break;
-    }
 
-    case "Condenser Pump": {
-      for (let index = 1; index <= count; index += 1) {
-        enterpriseStore.startEquipment(equipmentId("CWP", index));
-      }
-
-      useEnterprisePlantStore.setState({
-        sequenceState: "starting-condenser-pump",
-        currentSequenceMessage: `${count} condenser-water pump(s) started at ${elapsed}s.`,
-        failedSequenceStep: null,
+    case "ahu":
+      setGroupState(groupNumber, {
+        status: "running",
+        required: true,
+        selected: true,
+        currentStep: "Running",
+        lastCompletedStep: "AHU enable command issued",
+        message: "CSV startup sequence and AHU enable completed.",
       });
-
       break;
-    }
-
-    case "Cooling Tower": {
-      const requiredTowerCount = Math.min(
-        MAX_CHILLER_GROUPS,
-        Math.max(1, Math.ceil(count / 2)),
-      );
-
-      for (let index = 1; index <= requiredTowerCount; index += 1) {
-        enterpriseStore.startEquipment(equipmentId("CT", index));
-      }
-
-      useEnterprisePlantStore.setState({
-        sequenceState: "staging-cooling-towers",
-        currentSequenceMessage: `${requiredTowerCount} cooling tower(s) started for ${count} chiller group(s) at ${elapsed}s.`,
-        failedSequenceStep: null,
-      });
-
-      break;
-    }
-
-    case "Star Delta Starter": {
-      for (let index = 1; index <= count; index += 1) {
-        enterpriseStore.startEquipment(
-          `SD-CH-${String(index).padStart(2, "0")}`,
-        );
-      }
-
-      useEnterprisePlantStore.setState({
-        sequenceState: "starting-chiller",
-        currentSequenceMessage: `${count} Star–Delta starter(s) reached Delta at ${elapsed}s.`,
-        failedSequenceStep: null,
-      });
-
-      break;
-    }
-
-    case "Chiller Compressor": {
-      for (let index = 1; index <= count; index += 1) {
-        enterpriseStore.startEquipment(equipmentId("CH", index));
-      }
-
-      useEnterprisePlantStore.setState({
-        sequenceState: "running",
-        currentSequenceMessage: `${count} chiller compressor group(s) running at ${elapsed}s.`,
-        failedSequenceStep: null,
-      });
-
-      break;
-    }
-
-    case "AHU": {
-      useEnterprisePlantStore.setState({
-        sequenceState: "running",
-        currentSequenceMessage: `AHU enable command issued after ${count} chiller group(s) became available.`,
-        failedSequenceStep: null,
-      });
-
-      break;
-    }
 
     default:
       break;
   }
 }
 
+function completeShutdownStep(step: PlannedSequenceStep): void {
+  const groupNumber = step.groupNumber;
+
+  switch (step.id) {
+    case "shutdown-chiller":
+      setGroupState(groupNumber, {
+        status: "stopping",
+        currentStep: "Compressor stopped; hydronic run-on active",
+      });
+      break;
+
+    case "shutdown-starter":
+      useEnterprisePlantStore.getState().stopEquipment(starterId(groupNumber));
+      break;
+
+    case "shutdown-tower":
+      for (const fanId of towerFanIds(groupNumber)) {
+        useEnterprisePlantStore.getState().stopEquipment(fanId);
+      }
+      break;
+
+    case "shutdown-condenser-pump":
+      useEnterprisePlantStore
+        .getState()
+        .stopEquipment(equipmentId("CWP", groupNumber));
+      break;
+
+    case "shutdown-primary-pump":
+      useEnterprisePlantStore
+        .getState()
+        .stopEquipment(equipmentId("PCHWP", groupNumber));
+      break;
+
+    case "shutdown-transformer":
+      useEnterprisePlantStore
+        .getState()
+        .stopEquipment(equipmentId("TR", groupNumber));
+      break;
+
+    case "shutdown-complete":
+      setGroupState(groupNumber, {
+        status: "standby",
+        required: false,
+        selected: false,
+        currentStep: "Standby",
+        lastCompletedStep: "CSV shutdown sequence completed",
+        message: "Available for the next CSV stage-up request.",
+      });
+      break;
+
+    default:
+      break;
+  }
+}
+
+function completeStep(step: PlannedSequenceStep): void {
+  if (step.direction === "startup") {
+    completeStartupStep(step);
+  } else {
+    completeShutdownStep(step);
+  }
+
+  appendEvent(step, "success", `${step.action} completed.`);
+}
+
+function buildPlan(
+  currentChillers: number,
+  targetChillers: number,
+  csvIntervalSeconds: number,
+  csvTimestamp: string,
+): PlannedSequenceStep[] {
+  const direction: GroupSequenceDirection =
+    targetChillers > currentChillers ? "startup" : "shutdown";
+
+  const groupNumbers =
+    direction === "startup"
+      ? Array.from(
+          { length: targetChillers - currentChillers },
+          (_, index) => currentChillers + index + 1,
+        )
+      : Array.from(
+          { length: currentChillers - targetChillers },
+          (_, index) => currentChillers - index,
+        );
+
+  const sourceSteps =
+    direction === "startup" ? PLANT_SEQUENCE_STEPS : SHUTDOWN_SEQUENCE_STEPS;
+  const baseTotalSeconds =
+    groupNumbers.length *
+    sourceSteps.reduce((total, step) => total + step.duration, 0);
+  const availableSeconds = Math.max(
+    1,
+    csvIntervalSeconds * SEQUENCE_INTERVAL_UTILIZATION,
+  );
+  const scale =
+    baseTotalSeconds > availableSeconds
+      ? availableSeconds / baseTotalSeconds
+      : 1;
+
+  return groupNumbers.flatMap((groupNumber) =>
+    sourceSteps.map((step) => ({
+      ...step,
+      groupNumber,
+      direction,
+      durationSeconds: Math.max(1, Math.round(step.duration * scale)),
+      csvTimestamp,
+    })),
+  );
+}
+
+function createProgress(
+  plan: PlannedSequenceStep[],
+  request: CsvSequenceRequest,
+): Record<string, GroupSequenceProgress> {
+  const progress: Record<string, GroupSequenceProgress> = {};
+
+  for (const step of plan) {
+    const id = groupId(step.groupNumber);
+
+    if (progress[id]) {
+      progress[id].totalSeconds += step.durationSeconds;
+      continue;
+    }
+
+    progress[id] = {
+      groupId: id,
+      chillerId: chillerId(step.groupNumber),
+      direction: step.direction,
+      status: "queued",
+      currentEquipment: "Controller",
+      currentAction: "Queued for CSV sequence",
+      currentStepRemainingSeconds: 0,
+      elapsedSeconds: 0,
+      totalSeconds: step.durationSeconds,
+      csvTimestamp: request.csvTimestamp,
+      nextCsvTimestamp: request.nextCsvTimestamp,
+    };
+  }
+
+  return progress;
+}
+
 export const usePlantSequenceRuntime = create<PlantSequenceRuntime>(
   (set, get) => ({
     active: false,
-
     completed: false,
-
-    elapsed: 0,
-
-    equipment: "",
-
-    action: "",
-
-    remaining: 0,
-
-    requiredChillers: 0,
-
+    targetChillers: 0,
+    csvTimestamp: null,
+    nextCsvTimestamp: null,
+    csvIntervalSeconds: 0,
+    replayIntervalMilliseconds: 0,
+    simulatedSecondsPerRealMillisecond: 0,
+    plan: [],
+    currentPlanIndex: 0,
+    currentStepElapsedSeconds: 0,
+    groupProgress: {},
     events: [],
+    pendingRequest: null,
 
-    startSequence: (requestedChillers = 1) => {
-      const requiredChillers = clampRequiredChillers(requestedChillers);
+    requestSequence: (rawRequest) => {
+      const request: CsvSequenceRequest = {
+        ...rawRequest,
+        targetChillers: clampChillerCount(rawRequest.targetChillers),
+        csvIntervalSeconds: Math.max(1, rawRequest.csvIntervalSeconds),
+        replayIntervalMilliseconds: Math.max(
+          1,
+          rawRequest.replayIntervalMilliseconds,
+        ),
+      };
 
-      if (requiredChillers === 0 || get().active) return;
+      if (get().active) {
+        set({ pendingRequest: request });
+        return;
+      }
 
-      const firstStep = PLANT_SEQUENCE_STEPS[0];
-
-      startRequiredEquipment(
-        firstStep?.equipment ?? "Controller",
-        requiredChillers,
-        0,
+      const currentChillers = useEnterprisePlantStore
+        .getState()
+        .groups.filter((group) => group.status === "running").length;
+      const plan = buildPlan(
+        currentChillers,
+        request.targetChillers,
+        request.csvIntervalSeconds,
+        request.csvTimestamp,
       );
+      const timing =
+        request.csvIntervalSeconds / request.replayIntervalMilliseconds;
+
+      if (plan.length === 0) {
+        useEnterprisePlantStore.setState({
+          sequenceState: request.targetChillers > 0 ? "running" : "idle",
+          currentSequenceMessage:
+            `CSV ${new Date(request.csvTimestamp).toLocaleTimeString()}: ` +
+            `target remains ${request.targetChillers}; no staging change required.`,
+          lastCompletedStep: "CSV target maintained",
+          failedSequenceStep: null,
+        });
+
+        set({
+          active: false,
+          completed: true,
+          targetChillers: request.targetChillers,
+          csvTimestamp: request.csvTimestamp,
+          nextCsvTimestamp: request.nextCsvTimestamp,
+          csvIntervalSeconds: request.csvIntervalSeconds,
+          replayIntervalMilliseconds: request.replayIntervalMilliseconds,
+          simulatedSecondsPerRealMillisecond: timing,
+          plan: [],
+          currentPlanIndex: 0,
+          currentStepElapsedSeconds: 0,
+          groupProgress: {},
+          pendingRequest: null,
+        });
+        return;
+      }
+
+      const progress = createProgress(plan, request);
+      const firstStep = plan[0];
+      progress[groupId(firstStep.groupNumber)] = {
+        ...progress[groupId(firstStep.groupNumber)],
+        status: "running",
+        currentEquipment: firstStep.equipment,
+        currentAction: firstStep.action,
+        currentStepRemainingSeconds: firstStep.durationSeconds,
+      };
+
+      beginStep(firstStep);
 
       set({
         active: true,
-
         completed: false,
-
-        elapsed: 0,
-
-        equipment: firstStep?.equipment ?? "Controller",
-
-        action: firstStep?.action ?? "Cooling demand analysis",
-
-        remaining: firstStep?.duration ?? 0,
-
-        requiredChillers,
-
+        targetChillers: request.targetChillers,
+        csvTimestamp: request.csvTimestamp,
+        nextCsvTimestamp: request.nextCsvTimestamp,
+        csvIntervalSeconds: request.csvIntervalSeconds,
+        replayIntervalMilliseconds: request.replayIntervalMilliseconds,
+        simulatedSecondsPerRealMillisecond: timing,
+        plan,
+        currentPlanIndex: 0,
+        currentStepElapsedSeconds: 0,
+        groupProgress: progress,
         events: [
-          `0s | CSV cooling demand detected | ${requiredChillers} chiller group(s) required`,
-          `0s | ${firstStep?.equipment ?? "Controller"} | ${
-            firstStep?.action ?? "Cooling demand analysis"
-          }`,
-        ],
+          ...get().events,
+          `${request.csvTimestamp} | target ${request.targetChillers} | ${plan.length} staged steps`,
+        ].slice(-500),
+        pendingRequest: null,
       });
     },
 
-    tick: () =>
+    tick: (realMilliseconds = 100) => {
+      let requestAfterCompletion: CsvSequenceRequest | null = null;
+
       set((state) => {
-        if (!state.active) return state;
+        if (!state.active || state.plan.length === 0) {
+          return state;
+        }
 
-        const elapsed = state.elapsed + 1;
+        let advanceSeconds = Math.max(
+          0,
+          realMilliseconds * state.simulatedSecondsPerRealMillisecond,
+        );
+        let currentPlanIndex = state.currentPlanIndex;
+        let currentStepElapsedSeconds = state.currentStepElapsedSeconds;
+        const groupProgress: Record<string, GroupSequenceProgress> = {};
 
-        if (elapsed >= TOTAL_SEQUENCE_DURATION_SECONDS) {
-          const completionEvent =
-            `${TOTAL_SEQUENCE_DURATION_SECONDS}s | ` +
-            `${state.requiredChillers} chiller group(s) sequence completed`;
+        for (const [id, progress] of Object.entries(state.groupProgress)) {
+          groupProgress[id] = { ...progress };
+        }
 
+        const events = [...state.events];
+
+        while (advanceSeconds > 0 && currentPlanIndex < state.plan.length) {
+          const step = state.plan[currentPlanIndex];
+          const stepRemaining = Math.max(
+            0,
+            step.durationSeconds - currentStepElapsedSeconds,
+          );
+          const consumed = Math.min(advanceSeconds, stepRemaining);
+          const id = groupId(step.groupNumber);
+          const progress = groupProgress[id];
+
+          currentStepElapsedSeconds += consumed;
+          advanceSeconds -= consumed;
+
+          if (progress) {
+            progress.status = "running";
+            progress.currentEquipment = step.equipment;
+            progress.currentAction = step.action;
+            progress.elapsedSeconds = Math.min(
+              progress.totalSeconds,
+              progress.elapsedSeconds + consumed,
+            );
+            progress.currentStepRemainingSeconds = Math.max(
+              0,
+              Math.ceil(step.durationSeconds - currentStepElapsedSeconds),
+            );
+          }
+
+          if (currentStepElapsedSeconds + 1e-9 < step.durationSeconds) {
+            break;
+          }
+
+          completeStep(step);
+          events.push(
+            `${state.csvTimestamp ?? "CSV"} | ${id} | ${step.action} completed`,
+          );
+          currentPlanIndex += 1;
+          currentStepElapsedSeconds = 0;
+
+          const nextStep = state.plan[currentPlanIndex];
+
+          if (!nextStep || nextStep.groupNumber !== step.groupNumber) {
+            if (progress) {
+              progress.status = "completed";
+              progress.currentStepRemainingSeconds = 0;
+              progress.currentAction =
+                step.direction === "startup"
+                  ? "Group startup completed"
+                  : "Group shutdown completed";
+            }
+          }
+
+          if (nextStep) {
+            const nextProgress = groupProgress[groupId(nextStep.groupNumber)];
+
+            if (nextProgress) {
+              nextProgress.status = "running";
+              nextProgress.currentEquipment = nextStep.equipment;
+              nextProgress.currentAction = nextStep.action;
+              nextProgress.currentStepRemainingSeconds =
+                nextStep.durationSeconds;
+            }
+
+            beginStep(nextStep);
+          }
+        }
+
+        if (currentPlanIndex >= state.plan.length) {
           useEnterprisePlantStore.setState({
-            sequenceState: "running",
+            sequenceState: state.targetChillers > 0 ? "running" : "idle",
             currentSequenceMessage:
-              `CSV automatic plant sequence completed. ` +
-              `${state.requiredChillers} chiller group(s) are available.`,
+              `CSV staged transition completed: ${state.targetChillers} ` +
+              `chiller group(s) now match ${new Date(
+                state.csvTimestamp ?? Date.now(),
+              ).toLocaleTimeString()} demand.`,
+            lastCompletedStep: "CSV staged transition completed",
             failedSequenceStep: null,
           });
 
+          requestAfterCompletion = state.pendingRequest;
+
           return {
             ...state,
-
             active: false,
-
             completed: true,
-
-            elapsed: TOTAL_SEQUENCE_DURATION_SECONDS,
-
-            equipment:
-              PLANT_SEQUENCE_STEPS[PLANT_SEQUENCE_STEPS.length - 1]
-                ?.equipment ?? "AHU",
-
-            action: "Plant sequence completed",
-
-            remaining: 0,
-
-            events: state.events.includes(completionEvent)
-              ? state.events
-              : [...state.events, completionEvent],
+            currentPlanIndex,
+            currentStepElapsedSeconds: 0,
+            groupProgress,
+            events: events.slice(-500),
+            pendingRequest: null,
           };
         }
 
-        const currentStep = getSequenceStep(elapsed);
-
-        const previousStep =
-          elapsed > 0 ? getSequenceStep(elapsed - 1) : currentStep;
-
-        const stepChanged = previousStep.id !== currentStep.id;
-
-        if (stepChanged) {
-          startRequiredEquipment(
-            currentStep.equipment,
-            state.requiredChillers,
-            elapsed,
-          );
-        }
-
-        const remaining = getRemainingSeconds(elapsed);
-
-        const event = stepChanged
-          ? `${elapsed}s | ${currentStep.equipment} | ${currentStep.action}`
-          : null;
-
         return {
           ...state,
-
-          active: true,
-
-          completed: false,
-
-          elapsed,
-
-          equipment: currentStep.equipment,
-
-          action: currentStep.action,
-
-          remaining,
-
-          events:
-            event && !state.events.includes(event)
-              ? [...state.events, event]
-              : state.events,
+          currentPlanIndex,
+          currentStepElapsedSeconds,
+          groupProgress,
+          events: events.slice(-500),
         };
-      }),
+      });
+
+      if (requestAfterCompletion) {
+        get().requestSequence(requestAfterCompletion);
+      }
+    },
 
     reset: () => {
       useEnterprisePlantStore.setState({
         sequenceState: "idle",
         currentSequenceMessage:
-          "CSV plant sequence reset. Waiting for cooling demand.",
+          "CSV plant sequence reset. Waiting for the next replay snapshot.",
         failedSequenceStep: null,
       });
 
       set({
         active: false,
-
         completed: false,
-
-        elapsed: 0,
-
-        equipment: "",
-
-        action: "",
-
-        remaining: 0,
-
-        requiredChillers: 0,
-
+        targetChillers: 0,
+        csvTimestamp: null,
+        nextCsvTimestamp: null,
+        csvIntervalSeconds: 0,
+        replayIntervalMilliseconds: 0,
+        simulatedSecondsPerRealMillisecond: 0,
+        plan: [],
+        currentPlanIndex: 0,
+        currentStepElapsedSeconds: 0,
+        groupProgress: {},
         events: [],
+        pendingRequest: null,
       });
     },
   }),

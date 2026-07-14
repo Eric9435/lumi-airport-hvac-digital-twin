@@ -7,6 +7,7 @@ import {
   parseSensorCsv,
 } from "@/lib/sensor-data/sensor-csv-parser";
 import { useEnterprisePlantStore } from "@/store/enterprise-plant-store";
+import { usePlantSequenceRuntime } from "@/store/plant-sequence-runtime-store";
 import { useSimulationStore } from "@/store/simulation-store";
 
 import type { SensorCsvParseResult, SensorCsvRow } from "@/types/sensor-csv";
@@ -24,7 +25,6 @@ interface SensorReplayState {
   message: string;
 
   importCsvText: (filename: string, csvText: string) => void;
-
   loadSampleCsv: () => Promise<void>;
   applyRow: (index: number) => void;
   applyLatest: () => void;
@@ -37,39 +37,21 @@ interface SensorReplayState {
   setSpeed: (speed: number) => void;
 }
 
-const chillerIds = ["CH-01", "CH-02", "CH-03", "CH-04"] as const;
-
-function stagePlantForRow(row: SensorCsvRow): void {
-  const enterprise = useEnterprisePlantStore.getState();
-
+function applyCsvSnapshot(row: SensorCsvRow): void {
   const requiredChillers = calculateRequiredChillerCount(
     row.effectiveCoolingLoadKw,
     52,
     85,
   );
 
-  // CSV Replay owns staging. Suspend the internal synthetic demand model.
+  const enterprise = useEnterprisePlantStore.getState();
+  const runningChillers = enterprise.groups.filter(
+    (group) => group.status === "running",
+  ).length;
+
   enterprise.setAutomaticControl(false);
 
-  const currentlyRunning = enterprise.groups
-    .filter((group) => group.status === "running")
-    .map((group) => group.chillerId);
-
-  for (let index = 0; index < chillerIds.length; index += 1) {
-    const chillerId = chillerIds[index];
-    const shouldRun = index < requiredChillers;
-    const isRunning = currentlyRunning.includes(chillerId);
-
-    if (shouldRun && !isRunning) {
-      useEnterprisePlantStore.getState().startChillerGroup(chillerId);
-    }
-
-    if (!shouldRun && isRunning) {
-      useEnterprisePlantStore.getState().stopChillerGroup(chillerId);
-    }
-  }
-
-  useEnterprisePlantStore.setState(() => ({
+  useEnterprisePlantStore.setState({
     occupancy: row.passengerCount,
     outdoorDryBulbTemperatureC: row.outdoorDryBulbC,
     outdoorWetBulbTemperatureC: row.outdoorWetBulbC,
@@ -79,16 +61,28 @@ function stagePlantForRow(row: SensorCsvRow): void {
       (row.effectiveCoolingLoadKw / (52 * 4)) * 100,
     ),
     requiredChillerCount: requiredChillers,
-    sequenceState: requiredChillers > 0 ? "running" : "idle",
-    currentSequenceMessage: `CSV Replay: ${requiredChillers} chiller group(s) required at ${new Date(
-      row.timestamp,
-    ).toLocaleTimeString()}.`,
-    lastCompletedStep: "CSV sensor snapshot applied",
+    sequenceState:
+      requiredChillers === runningChillers
+        ? requiredChillers > 0
+          ? "running"
+          : "idle"
+        : "selecting-equipment",
+    currentSequenceMessage:
+      `CSV snapshot ${new Date(row.timestamp).toLocaleTimeString()} accepted. ` +
+      `Target ${requiredChillers}; currently running ${runningChillers}. ` +
+      "Equipment will change only through the staged sequence.",
+    lastCompletedStep: "CSV demand snapshot accepted",
     failedSequenceStep:
       row.sensorQuality === "BAD" || row.sensorQuality === "MISSING"
         ? "Sensor data quality"
         : null,
-  }));
+  });
+}
+
+function clearCsvSequenceHistory(): void {
+  useEnterprisePlantStore.setState({
+    sequenceEvents: [],
+  });
 }
 
 export const useSensorReplayStore = create<SensorReplayState>((set, get) => ({
@@ -139,7 +133,6 @@ export const useSensorReplayStore = create<SensorReplayState>((set, get) => ({
       }
 
       const csvText = await response.text();
-
       get().importCsvText("yia-24h-10min.csv", csvText);
     } catch (error) {
       set({
@@ -158,7 +151,6 @@ export const useSensorReplayStore = create<SensorReplayState>((set, get) => ({
     }
 
     const safeIndex = Math.min(rows.length - 1, Math.max(0, index));
-
     const row = rows[safeIndex];
 
     if (row.sensorQuality === "BAD" || row.sensorQuality === "MISSING") {
@@ -170,25 +162,23 @@ export const useSensorReplayStore = create<SensorReplayState>((set, get) => ({
       return;
     }
 
-    stagePlantForRow(row);
+    applyCsvSnapshot(row);
 
     set({
       currentIndex: safeIndex,
       status: safeIndex === rows.length - 1 ? "completed" : get().status,
-      message: `Applied ${new Date(
-        row.timestamp,
-      ).toLocaleString()} — ${calculateRequiredChillerCount(row.effectiveCoolingLoadKw)} chiller(s) required.`,
+      message:
+        `${new Date(row.timestamp).toLocaleString()} snapshot accepted — ` +
+        `${calculateRequiredChillerCount(row.effectiveCoolingLoadKw)} chiller(s) targeted.`,
     });
   },
 
   applyLatest: () => {
     const { rows } = get();
 
-    if (rows.length === 0) {
-      return;
+    if (rows.length > 0) {
+      get().applyRow(rows.length - 1);
     }
-
-    get().applyRow(rows.length - 1);
   },
 
   play: () => {
@@ -199,8 +189,14 @@ export const useSensorReplayStore = create<SensorReplayState>((set, get) => ({
     }
 
     const restartFromBeginning = state.currentIndex >= state.rows.length - 1;
-
+    const freshReplayStart = state.status === "ready" || restartFromBeginning;
     const nextIndex = restartFromBeginning ? 0 : state.currentIndex;
+
+    if (freshReplayStart) {
+      useEnterprisePlantStore.getState().stopAllEquipment();
+      clearCsvSequenceHistory();
+      usePlantSequenceRuntime.getState().reset();
+    }
 
     set({
       currentIndex: nextIndex,
@@ -208,16 +204,7 @@ export const useSensorReplayStore = create<SensorReplayState>((set, get) => ({
       message: "CSV replay is running.",
     });
 
-    /*
-     * Apply the current snapshot immediately so the plant
-     * responds as soon as Play Replay is pressed.
-     */
     get().applyRow(nextIndex);
-
-    /*
-     * applyRow preserves the current playing status unless
-     * the snapshot is the final record or has invalid quality.
-     */
   },
 
   pause: () => {
@@ -228,34 +215,31 @@ export const useSensorReplayStore = create<SensorReplayState>((set, get) => ({
   },
 
   stepForward: () => {
-    const nextIndex = Math.min(get().rows.length - 1, get().currentIndex + 1);
-
-    get().applyRow(nextIndex);
+    get().applyRow(Math.min(get().rows.length - 1, get().currentIndex + 1));
   },
 
   stepBackward: () => {
-    const previousIndex = Math.max(0, get().currentIndex - 1);
-
-    get().applyRow(previousIndex);
+    get().applyRow(Math.max(0, get().currentIndex - 1));
   },
 
   resetReplay: () => {
-    const enterprise = useEnterprisePlantStore.getState();
-
-    enterprise.stopAllEquipment();
+    useEnterprisePlantStore.getState().stopAllEquipment();
+    clearCsvSequenceHistory();
+    usePlantSequenceRuntime.getState().reset();
     useSimulationStore.getState().resetSimulation();
 
     set({
       currentIndex: 0,
       status: get().rows.length > 0 ? "ready" : "empty",
       message:
-        "Replay reset. Plant equipment was safely stopped; cumulative meters remain preserved.",
+        "Replay reset. Plant equipment and CSV sequence were safely reset; cumulative meters remain preserved.",
     });
   },
 
   clearImport: () => {
     useEnterprisePlantStore.getState().stopAllEquipment();
-
+    clearCsvSequenceHistory();
+    usePlantSequenceRuntime.getState().reset();
     useSimulationStore.getState().resetSimulation();
 
     set({

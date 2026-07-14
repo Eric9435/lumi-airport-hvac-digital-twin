@@ -3,7 +3,7 @@
 import { useEffect } from "react";
 
 import { calculateEnergySample } from "@/lib/energy/energy-engine";
-import { calculateRequiredChillerCount } from "@/lib/sensor-data/sensor-csv-parser";
+import { useEnterprisePlantStore } from "@/store/enterprise-plant-store";
 import { useSensorReplayStore } from "@/store/sensor-replay-store";
 import { useSimulationStore } from "@/store/simulation-store";
 
@@ -49,6 +49,11 @@ export function CsvDashboardPlantBridge() {
 
   const replayStatus = useSensorReplayStore((state) => state.status);
 
+  const runningEnterpriseChillers = useEnterprisePlantStore(
+    (state) =>
+      state.groups.filter((group) => group.status === "running").length,
+  );
+
   const currentRow = rows[currentIndex];
 
   useEffect(() => {
@@ -68,9 +73,8 @@ export function CsvDashboardPlantBridge() {
       return;
     }
 
-    const requiredChillers = calculateRequiredChillerCount(
-      currentRow.effectiveCoolingLoadKw,
-    );
+    /* Dashboard equipment follows completed enterprise sequence state. */
+    const requiredChillers = runningEnterpriseChillers;
 
     useSimulationStore.setState((state) => {
       const operatingMode: OperatingMode = "automatic";
@@ -365,7 +369,7 @@ export function CsvDashboardPlantBridge() {
         energyHistory,
       };
     });
-  }, [currentIndex, currentRow, replayStatus]);
+  }, [currentIndex, currentRow, replayStatus, runningEnterpriseChillers]);
 
   return null;
 }

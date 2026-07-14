@@ -2,32 +2,15 @@
 
 import { useEffect } from "react";
 
+import { getReplayIntervalMilliseconds } from "@/lib/sensor-data/replay-timing";
 import { useSensorReplayStore } from "@/store/sensor-replay-store";
-
-/*
- * Replay timing policy:
- *
- * 1×  = one 10-minute CSV snapshot every 2 seconds
- * 2×  = one snapshot every 1 second
- * 5×  = one snapshot every 400 ms
- * 10× = one snapshot every 200 ms
- *
- * This is accelerated historical replay, not wall-clock playback.
- */
-const BASE_REPLAY_INTERVAL_MS = 2000;
-const MINIMUM_REPLAY_INTERVAL_MS = 100;
 
 export function SensorReplayRuntime() {
   const status = useSensorReplayStore((state) => state.status);
-
   const speed = useSensorReplayStore((state) => state.speed);
-
   const currentIndex = useSensorReplayStore((state) => state.currentIndex);
-
   const rowCount = useSensorReplayStore((state) => state.rows.length);
-
   const stepForward = useSensorReplayStore((state) => state.stepForward);
-
   const pause = useSensorReplayStore((state) => state.pause);
 
   useEffect(() => {
@@ -40,14 +23,9 @@ export function SensorReplayRuntime() {
       return;
     }
 
-    const intervalMilliseconds = Math.max(
-      MINIMUM_REPLAY_INTERVAL_MS,
-      BASE_REPLAY_INTERVAL_MS / Math.max(0.25, speed),
-    );
-
     const timer = window.setTimeout(() => {
       stepForward();
-    }, intervalMilliseconds);
+    }, getReplayIntervalMilliseconds(speed));
 
     return () => {
       window.clearTimeout(timer);

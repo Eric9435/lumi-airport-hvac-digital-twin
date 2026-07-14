@@ -2,6 +2,8 @@
 
 import { useMemo } from "react";
 
+import { GroupCsvSequenceStatus } from "@/components/enterprise/group-csv-sequence-status";
+
 import { useEnterprisePlantStore } from "@/store/enterprise-plant-store";
 import {
   formatMmk,
@@ -151,6 +153,11 @@ export function PlantSequenceOverview() {
                 </div>
                 <StatusPill status={group.status} />
               </div>
+
+              <GroupCsvSequenceStatus
+                groupId={group.groupId}
+                chillerId={group.chillerId}
+              />
 
               <div className="mt-5 space-y-2">
                 {[
