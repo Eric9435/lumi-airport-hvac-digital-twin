@@ -1,21 +1,21 @@
 "use client";
 
-import { useEffect } from "react";
+import { useEffect, useRef } from "react";
 
 import { calculateRequiredChillerCount } from "@/lib/sensor-data/sensor-csv-parser";
-
+import { usePlantSequenceRuntime } from "@/store/plant-sequence-runtime-store";
 import { useSensorReplayStore } from "@/store/sensor-replay-store";
 
-import { usePlantSequenceRuntime } from "@/store/plant-sequence-runtime-store";
-
 export default function CsvSequenceTrigger() {
-  const rows = useSensorReplayStore((s) => s.rows);
+  const rows = useSensorReplayStore((state) => state.rows);
 
-  const currentIndex = useSensorReplayStore((s) => s.currentIndex);
+  const currentIndex = useSensorReplayStore((state) => state.currentIndex);
 
-  const startSequence = usePlantSequenceRuntime((s) => s.startSequence);
+  const startSequence = usePlantSequenceRuntime((state) => state.startSequence);
 
-  const active = usePlantSequenceRuntime((s) => s.active);
+  const active = usePlantSequenceRuntime((state) => state.active);
+
+  const lastTriggeredRowRef = useRef<string | null>(null);
 
   useEffect(() => {
     const row = rows[currentIndex];
@@ -28,9 +28,25 @@ export default function CsvSequenceTrigger() {
       85,
     );
 
-    if (requiredChillers > 0 && !active) {
-      startSequence();
+    const rowKey = [
+      currentIndex,
+      row.timestamp,
+      row.effectiveCoolingLoadKw,
+      requiredChillers,
+    ].join("|");
+
+    if (requiredChillers === 0) {
+      lastTriggeredRowRef.current = null;
+      return;
     }
+
+    if (active) return;
+
+    if (lastTriggeredRowRef.current === rowKey) return;
+
+    lastTriggeredRowRef.current = rowKey;
+
+    startSequence(requiredChillers);
   }, [rows, currentIndex, active, startSequence]);
 
   return null;
