@@ -1,5 +1,7 @@
 "use client";
 
+import LiveSensorMonitoringPanel from "./live-sensor-monitoring-panel";
+
 import Link from "next/link";
 
 import { Activity, AlertTriangle, Plane, Snowflake, Zap } from "lucide-react";
@@ -218,6 +220,10 @@ export function PlantDashboard() {
               <LumiCommandConsole />
             </aside>
           </section>
+        </div>
+
+        <div className="mt-8">
+          <LiveSensorMonitoringPanel />
         </div>
       </main>
     </>
