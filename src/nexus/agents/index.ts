@@ -8,3 +8,4 @@ export * from "@/nexus/agents/nexus-agent-registry";
 export * from "@/nexus/agents/nexus-agent-runtime";
 export * from "@/nexus/agents/nexus-orchestrator-agent";
 export * from "@/nexus/agents/nexus-tool-registry";
+export * from "@/nexus/agents/power-operations-agent";

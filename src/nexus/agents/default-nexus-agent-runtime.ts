@@ -2,11 +2,12 @@ import { energyIntelligenceAgent } from "@/nexus/agents/energy-intelligence-agen
 import { hvacOperationsAgent } from "@/nexus/agents/hvac-operations-agent";
 import { maintenanceIntelligenceAgent } from "@/nexus/agents/maintenance-intelligence-agent";
 import { nexusOrchestratorAgent } from "@/nexus/agents/nexus-orchestrator-agent";
+import { powerOperationsAgent } from "@/nexus/agents/power-operations-agent";
 import { NexusAgentRegistry } from "@/nexus/agents/nexus-agent-registry";
 import { NexusAgentRuntime } from "@/nexus/agents/nexus-agent-runtime";
 import { NexusToolRegistry } from "@/nexus/agents/nexus-tool-registry";
 import { nexusEventBus } from "@/nexus/events";
-import { nexusAssetRegistry } from "@/nexus/registry";
+import { initializeNexusAssets, nexusAssetRegistry } from "@/nexus/registry";
 
 declare global {
   var __lumiNexusAgentRegistry: NexusAgentRegistry | undefined;
@@ -22,13 +23,18 @@ const agentRegistry =
 const toolRegistry =
   globalThis.__lumiNexusToolRegistry ?? new NexusToolRegistry();
 
-if (!agentRegistry.has("hvac-operations-agent")) {
-  agentRegistry.registerMany([
-    hvacOperationsAgent,
-    energyIntelligenceAgent,
-    maintenanceIntelligenceAgent,
-    nexusOrchestratorAgent,
-  ]);
+const agents = [
+  hvacOperationsAgent,
+  powerOperationsAgent,
+  energyIntelligenceAgent,
+  maintenanceIntelligenceAgent,
+  nexusOrchestratorAgent,
+];
+
+for (const agent of agents) {
+  if (!agentRegistry.has(agent.agentId)) {
+    agentRegistry.register(agent);
+  }
 }
 
 const runtime =
@@ -45,6 +51,8 @@ if (process.env.NODE_ENV !== "production") {
   globalThis.__lumiNexusToolRegistry = toolRegistry;
   globalThis.__lumiNexusAgentRuntime = runtime;
 }
+
+void initializeNexusAssets();
 
 export const nexusAgentRegistry = agentRegistry;
 export const nexusToolRegistry = toolRegistry;
