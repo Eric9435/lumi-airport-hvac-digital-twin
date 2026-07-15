@@ -1,0 +1,11 @@
+dataset_id,filename,start_timestamp,end_timestamp,interval_minutes,snapshot_count,row_count,column_count,timezone,data_origin,platform,version
+NEXUS-24H-01,yia-power-distribution-24h-10min.csv,2026-07-15T00:00:00.000Z,2026-07-15T23:50:00.000Z,10,144,1008,28,UTC,simulated,LUMI Nexus,1.0.0
+NEXUS-24H-02,yia-emergency-power-24h-10min.csv,2026-07-15T00:00:00.000Z,2026-07-15T23:50:00.000Z,10,144,720,26,UTC,simulated,LUMI Nexus,1.0.0
+NEXUS-24H-03,yia-energy-utilities-24h-10min.csv,2026-07-15T00:00:00.000Z,2026-07-15T23:50:00.000Z,10,144,1152,22,UTC,simulated,LUMI Nexus,1.0.0
+NEXUS-24H-04,yia-safety-systems-24h-10min.csv,2026-07-15T00:00:00.000Z,2026-07-15T23:50:00.000Z,10,144,1728,17,UTC,simulated,LUMI Nexus,1.0.0
+NEXUS-24H-05,yia-passenger-flow-24h-10min.csv,2026-07-15T00:00:00.000Z,2026-07-15T23:50:00.000Z,10,144,1152,19,UTC,simulated,LUMI Nexus,1.0.0
+NEXUS-24H-06,yia-flight-operations-24h-10min.csv,2026-07-15T00:00:00.000Z,2026-07-15T23:50:00.000Z,10,144,2592,25,UTC,simulated,LUMI Nexus,1.0.0
+NEXUS-24H-07,yia-baggage-operations-24h-10min.csv,2026-07-15T00:00:00.000Z,2026-07-15T23:50:00.000Z,10,144,1440,22,UTC,simulated,LUMI Nexus,1.0.0
+NEXUS-24H-08,yia-airport-environment-24h-10min.csv,2026-07-15T00:00:00.000Z,2026-07-15T23:50:00.000Z,10,144,144,19,UTC,simulated,LUMI Nexus,1.0.0
+NEXUS-24H-09,yia-building-infrastructure-24h-10min.csv,2026-07-15T00:00:00.000Z,2026-07-15T23:50:00.000Z,10,144,1728,22,UTC,simulated,LUMI Nexus,1.0.0
+NEXUS-24H-10,yia-platform-health-24h-10min.csv,2026-07-15T00:00:00.000Z,2026-07-15T23:50:00.000Z,10,144,1152,16,UTC,simulated,LUMI Nexus,1.0.0
