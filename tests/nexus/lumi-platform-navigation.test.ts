@@ -8,38 +8,45 @@ function readProjectFile(path: string): string {
 }
 
 describe("LUMI platform navigation", () => {
-  it("provides Nexus and HVAC navigation links", () => {
-    const source = readProjectFile(
-      "src/components/nexus/lumi-platform-navigation.tsx",
-    );
+  const navigation = readProjectFile(
+    "src/components/nexus/lumi-platform-navigation.tsx",
+  );
 
-    expect(source).toContain('href: "/nexus"');
-    expect(source).toContain('href: "/dashboard"');
+  it("provides primary platform navigation", () => {
+    expect(navigation).toContain('href: "/nexus"');
+
+    expect(navigation).toContain('href: "/nexus/operations"');
+
+    expect(navigation).toContain('href: "/dashboard"');
   });
 
-  it("marks the active route accessibly", () => {
-    const source = readProjectFile(
-      "src/components/nexus/lumi-platform-navigation.tsx",
-    );
-
-    expect(source).toContain('aria-current={active ? "page" : undefined}');
+  it("marks active routes accessibly", () => {
+    expect(navigation).toContain('aria-current={active ? "page" : undefined}');
   });
 
   it("wraps the Nexus route with the shared shell", () => {
-    const source = readProjectFile("src/app/nexus/layout.tsx");
+    const layout = readProjectFile("src/app/nexus/layout.tsx");
 
-    expect(source).toContain("<LumiPlatformShell>");
+    expect(layout).toContain("<LumiPlatformShell>");
   });
 
-  it("wraps the HVAC route with the shared shell", () => {
-    const source = readProjectFile("src/app/hvac/layout.tsx");
+  it("wraps the HVAC dashboard with the shared shell", () => {
+    const layout = readProjectFile("src/app/dashboard/layout.tsx");
 
-    expect(source).toContain("<LumiPlatformShell>");
+    expect(layout).toContain("<LumiPlatformShell>");
   });
 
   it("preserves Nexus as the primary application entry", () => {
-    const source = readProjectFile("src/app/page.tsx");
+    const rootPage = readProjectFile("src/app/page.tsx");
 
-    expect(source).toContain('redirect("/nexus")');
+    expect(rootPage).toContain('redirect("/nexus")');
+  });
+
+  it("provides desktop and mobile navigation modes", () => {
+    expect(navigation).toContain("md:flex");
+
+    expect(navigation).toContain("md:hidden");
+
+    expect(navigation).toContain("mobileMenuOpen");
   });
 });

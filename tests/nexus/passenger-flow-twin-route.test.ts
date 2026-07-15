@@ -18,14 +18,14 @@ describe("Passenger Flow Twin route", () => {
     expect(source).toContain("Operational Control Policy");
   });
 
-  it("adds Passenger Flow to platform navigation", () => {
+  it("adds Passenger Flow Twin to domain navigation", () => {
     const source = readProjectFile(
       "src/components/nexus/lumi-platform-navigation.tsx",
     );
 
     expect(source).toContain('href: "/nexus/passenger-flow"');
 
-    expect(source).toContain('label: "Passenger Flow"');
+    expect(source).toContain('label: "Passenger Flow Twin"');
   });
 
   it("preserves the canonical HVAC dashboard route", () => {

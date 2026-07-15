@@ -25,7 +25,7 @@ describe("Flight Operations Twin route", () => {
 
     expect(source).toContain('href: "/nexus/flight-operations"');
 
-    expect(source).toContain('label: "Flight Operations"');
+    expect(source).toContain('label: "Flight Operations Twin"');
   });
 
   it("preserves the canonical HVAC dashboard route", () => {

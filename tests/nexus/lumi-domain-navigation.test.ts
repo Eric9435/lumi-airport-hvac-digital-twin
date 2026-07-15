@@ -3,42 +3,57 @@ import { resolve } from "node:path";
 
 import { describe, expect, it } from "vitest";
 
-function readProjectFile(path: string): string {
-  return readFileSync(resolve(process.cwd(), path), "utf8");
-}
+const navigation = readFileSync(
+  resolve(process.cwd(), "src/components/nexus/lumi-platform-navigation.tsx"),
+  "utf8",
+);
 
 describe("LUMI domain navigation", () => {
-  const navigation = readProjectFile(
-    "src/components/nexus/lumi-platform-navigation.tsx",
-  );
+  it("provides all available platform destinations", () => {
+    const routes = [
+      "/nexus",
+      "/nexus/operations",
+      "/dashboard",
+      "/nexus/power",
+      "/nexus/energy",
+      "/nexus/maintenance",
+      "/nexus/safety",
+      "/nexus/passenger-flow",
+      "/nexus/flight-operations",
+    ];
 
-  it("provides direct navigation to all available platform views", () => {
-    expect(navigation).toContain('href: "/nexus"');
-
-    expect(navigation).toContain('href: "/nexus/power"');
-
-    expect(navigation).toContain('href: "/dashboard"');
+    for (const route of routes) {
+      expect(navigation).toContain(`href: "${route}"`);
+    }
   });
 
   it("uses exact matching for the Nexus overview", () => {
-    expect(navigation).toContain('routeMode: "exact"');
+    expect(navigation).toContain('if (href === "/nexus")');
 
-    expect(navigation).toContain("return pathname === item.href");
+    expect(navigation).toContain('return pathname === "/nexus"');
   });
 
-  it("uses section matching for domain twins", () => {
-    expect(navigation).toContain('routeMode: "section"');
-
-    expect(navigation).toContain("pathname.startsWith(`${item.href}/`)");
+  it("uses section matching for nested destinations", () => {
+    expect(navigation).toContain("pathname.startsWith(`${href}/`)");
   });
 
-  it("marks only the matching destination as the current page", () => {
+  it("groups connected twins in an enterprise domain menu", () => {
+    expect(navigation).toContain("const domainTwinItems");
+
+    expect(navigation).toContain("Domain Twins");
+
+    expect(navigation).toContain('id="lumi-domain-twin-menu"');
+  });
+
+  it("provides a dedicated responsive mobile menu", () => {
+    expect(navigation).toContain('aria-label="Toggle LUMI navigation menu"');
+
+    expect(navigation).toContain('id="lumi-mobile-navigation"');
+
+    expect(navigation).toContain("md:hidden");
+  });
+
+  it("marks active destinations accessibly", () => {
     expect(navigation).toContain('aria-current={active ? "page" : undefined}');
-  });
-
-  it("keeps navigation usable on narrow displays", () => {
-    expect(navigation).toContain("overflow-x-auto");
-
-    expect(navigation).toContain("min-w-max");
   });
 });
