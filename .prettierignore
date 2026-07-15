@@ -3,3 +3,5 @@ node_modules
 coverage
 package-lock.json
 public/data
+
+docs/data/LUMI_SENSOR_INPUT_COMPLETE_INVENTORY.md
