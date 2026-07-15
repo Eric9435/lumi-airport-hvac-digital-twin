@@ -34,6 +34,13 @@ const navigationItems: PlatformNavigationItem[] = [
     routeMode: "section",
   },
   {
+    href: "/nexus/maintenance",
+    shortLabel: "Maint.",
+    label: "Maintenance Twin",
+    description: "Cross-domain predictive maintenance intelligence",
+    routeMode: "section",
+  },
+  {
     href: "/dashboard",
     shortLabel: "HVAC",
     label: "HVAC Twin",
