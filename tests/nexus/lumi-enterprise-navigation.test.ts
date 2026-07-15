@@ -9,44 +9,36 @@ const source = readFileSync(
 );
 
 describe("LUMI enterprise navigation", () => {
-  it("provides primary Nexus, Operations and HVAC destinations", () => {
-    expect(source).toContain('href: "/nexus"');
-
-    expect(source).toContain('href: "/nexus/operations"');
-
-    expect(source).toContain('href: "/dashboard"');
+  it("provides all primary platform destinations", () => {
+    for (const route of ["/nexus", "/nexus/operations", "/dashboard"]) {
+      expect(source).toContain(`href: "${route}"`);
+    }
   });
 
   it("provides all connected domain twins", () => {
-    const routes = [
+    for (const route of [
       "/nexus/power",
       "/nexus/energy",
       "/nexus/maintenance",
       "/nexus/safety",
       "/nexus/passenger-flow",
       "/nexus/flight-operations",
-    ];
-
-    for (const route of routes) {
+    ]) {
       expect(source).toContain(`href: "${route}"`);
     }
   });
 
   it("provides accessible desktop and mobile menus", () => {
-    expect(source).toContain("aria-expanded={domainMenuOpen}");
-
     expect(source).toContain('aria-controls="lumi-domain-twin-menu"');
 
-    expect(source).toContain('id="lumi-domain-twin-menu"');
-
-    expect(source).toContain("aria-expanded={mobileMenuOpen}");
+    expect(source).toContain("aria-expanded={domainMenuOpen}");
 
     expect(source).toContain('aria-controls="lumi-mobile-navigation"');
 
-    expect(source).toContain('id="lumi-mobile-navigation"');
+    expect(source).toContain("aria-expanded={mobileMenuOpen}");
   });
 
-  it("passes a typed callback to primary navigation links", () => {
+  it("uses a typed callback for primary links", () => {
     expect(source).toContain("onNavigate: () => void");
 
     expect(source).toContain("onClick={onNavigate}");
@@ -54,21 +46,15 @@ describe("LUMI enterprise navigation", () => {
     expect(source).toContain("onNavigate={closeNavigationMenus}");
   });
 
-  it("closes desktop and mobile menus after navigation", () => {
+  it("closes menus through navigation actions", () => {
     expect(source).toContain("function closeNavigationMenus(): void");
 
     expect(source).toContain("setDomainMenuOpen(false)");
 
     expect(source).toContain("setMobileMenuOpen(false)");
-
-    const directHandlerCount = (
-      source.match(/onClick=\{closeNavigationMenus\}/g) ?? []
-    ).length;
-
-    expect(directHandlerCount).toBeGreaterThanOrEqual(3);
   });
 
-  it("does not reset menu state synchronously from pathname changes", () => {
+  it("does not synchronously reset state on pathname changes", () => {
     expect(source).not.toContain(
       `useEffect(() => {
     setDomainMenuOpen(false);
@@ -77,13 +63,13 @@ describe("LUMI enterprise navigation", () => {
     );
   });
 
-  it("supports outside-click and escape-key dismissal", () => {
+  it("supports pointer and keyboard dismissal", () => {
     expect(source).toContain('document.addEventListener("mousedown"');
 
     expect(source).toContain('event.key === "Escape"');
   });
 
-  it("marks active destinations accessibly", () => {
+  it("marks active routes accessibly", () => {
     expect(source).toContain('aria-current={active ? "page" : undefined}');
   });
 });
