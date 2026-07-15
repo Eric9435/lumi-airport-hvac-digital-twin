@@ -25,6 +25,12 @@ const primaryNavigationItems: NavigationItem[] = [
     description: "Events, agents, approvals and platform operations",
   },
   {
+    href: "/nexus/replay",
+    label: "Replay Console",
+    shortLabel: "Replay",
+    description: "Run the synchronized 24-hour operational dataset timeline.",
+  },
+  {
     href: "/dashboard",
     shortLabel: "HVAC",
     label: "HVAC Digital Twin",

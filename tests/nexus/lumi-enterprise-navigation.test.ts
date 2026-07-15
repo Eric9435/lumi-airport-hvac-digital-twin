@@ -10,7 +10,12 @@ const source = readFileSync(
 
 describe("LUMI enterprise navigation", () => {
   it("provides all primary platform destinations", () => {
-    for (const route of ["/nexus", "/nexus/operations", "/dashboard"]) {
+    for (const route of [
+      "/nexus",
+      "/nexus/operations",
+      "/nexus/replay",
+      "/dashboard",
+    ]) {
       expect(source).toContain(`href: "${route}"`);
     }
   });
@@ -26,6 +31,14 @@ describe("LUMI enterprise navigation", () => {
     ]) {
       expect(source).toContain(`href: "${route}"`);
     }
+  });
+
+  it("provides a typed Replay Console navigation item", () => {
+    expect(source).toContain('href: "/nexus/replay"');
+
+    expect(source).toContain('label: "Replay Console"');
+
+    expect(source).toContain('shortLabel: "Replay"');
   });
 
   it("provides accessible desktop and mobile menus", () => {
