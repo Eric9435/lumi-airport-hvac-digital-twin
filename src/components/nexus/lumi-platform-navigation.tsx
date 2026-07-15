@@ -41,6 +41,13 @@ const navigationItems: PlatformNavigationItem[] = [
     routeMode: "section",
   },
   {
+    href: "/nexus/safety",
+    shortLabel: "Safety",
+    label: "Safety Twin",
+    description: "Airport safety readiness and critical-event intelligence",
+    routeMode: "section",
+  },
+  {
     href: "/dashboard",
     shortLabel: "HVAC",
     label: "HVAC Twin",
