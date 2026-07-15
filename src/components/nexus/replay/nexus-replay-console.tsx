@@ -2,6 +2,12 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
+import {
+  isNexusReplaySpeed,
+  NEXUS_REPLAY_SPEED_OPTIONS,
+  useNexusReplayStore,
+} from "@/store/nexus-replay-store";
+
 interface ReplayDatasetSnapshot {
   datasetId: string;
   filename: string;
@@ -32,47 +38,33 @@ interface ReplayErrorResponse {
   message: string;
 }
 
+const DOMAIN_LABELS: Record<string, string> = {
+  "yia-power-distribution-24h-10min.csv": "Power Distribution",
+
+  "yia-emergency-power-24h-10min.csv": "Emergency Power",
+
+  "yia-energy-utilities-24h-10min.csv": "Energy & Utilities",
+
+  "yia-safety-systems-24h-10min.csv": "Safety Systems",
+
+  "yia-passenger-flow-24h-10min.csv": "Passenger Flow",
+
+  "yia-flight-operations-24h-10min.csv": "Flight Operations",
+
+  "yia-baggage-operations-24h-10min.csv": "Baggage Operations",
+
+  "yia-airport-environment-24h-10min.csv": "Airport Environment",
+
+  "yia-building-infrastructure-24h-10min.csv": "Building Infrastructure",
+
+  "yia-platform-health-24h-10min.csv": "Platform Health",
+};
+
 function isReplayErrorResponse(
   payload: ReplaySnapshot | ReplayErrorResponse,
 ): payload is ReplayErrorResponse {
   return "status" in payload && payload.status === "error";
 }
-
-const REPLAY_SPEED_OPTIONS = [
-  {
-    label: "60×",
-    value: 60,
-    delayMs: 10_000,
-  },
-  {
-    label: "120×",
-    value: 120,
-    delayMs: 5_000,
-  },
-  {
-    label: "600×",
-    value: 600,
-    delayMs: 1_000,
-  },
-  {
-    label: "1200×",
-    value: 1200,
-    delayMs: 500,
-  },
-] as const;
-
-const DOMAIN_LABELS: Record<string, string> = {
-  "yia-power-distribution-24h-10min.csv": "Power Distribution",
-  "yia-emergency-power-24h-10min.csv": "Emergency Power",
-  "yia-energy-utilities-24h-10min.csv": "Energy & Utilities",
-  "yia-safety-systems-24h-10min.csv": "Safety Systems",
-  "yia-passenger-flow-24h-10min.csv": "Passenger Flow",
-  "yia-flight-operations-24h-10min.csv": "Flight Operations",
-  "yia-baggage-operations-24h-10min.csv": "Baggage Operations",
-  "yia-airport-environment-24h-10min.csv": "Airport Environment",
-  "yia-building-infrastructure-24h-10min.csv": "Building Infrastructure",
-  "yia-platform-health-24h-10min.csv": "Platform Health",
-};
 
 function formatVirtualTime(timestamp: string): string {
   return new Intl.DateTimeFormat("en-GB", {
@@ -92,81 +84,95 @@ function formatVirtualDate(timestamp: string): string {
   }).format(new Date(timestamp));
 }
 
-function domainLabel(filename: string): string {
+function getDomainLabel(filename: string): string {
   return DOMAIN_LABELS[filename] ?? filename;
 }
 
 export function NexusReplayConsole() {
   const [snapshot, setSnapshot] = useState<ReplaySnapshot | null>(null);
-  const [requestedIndex, setRequestedIndex] = useState(0);
-  const [playing, setPlaying] = useState(false);
-  const [speed, setSpeed] = useState(600);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
 
   const requestSequenceRef = useRef(0);
 
+  const {
+    requestedIndex,
+    speed,
+    status,
+    error,
+    beginLoading,
+    acceptSnapshot,
+    setRequestedIndex,
+    setSpeed,
+    play,
+    pause,
+    reset,
+    seek,
+    fail,
+  } = useNexusReplayStore();
+
+  const loading = status === "loading";
+
+  const playing = status === "playing";
+
   const selectedSpeed = useMemo(
     () =>
-      REPLAY_SPEED_OPTIONS.find((option) => option.value === speed) ??
-      REPLAY_SPEED_OPTIONS[2],
+      NEXUS_REPLAY_SPEED_OPTIONS.find((option) => option.value === speed) ??
+      NEXUS_REPLAY_SPEED_OPTIONS[2],
     [speed],
   );
 
-  const loadSnapshot = useCallback(async (index: number) => {
-    const requestSequence = requestSequenceRef.current + 1;
-    requestSequenceRef.current = requestSequence;
+  const loadSnapshot = useCallback(
+    async (index: number, preservePlaying = false) => {
+      const requestSequence = requestSequenceRef.current + 1;
 
-    setLoading(true);
-    setError(null);
+      requestSequenceRef.current = requestSequence;
 
-    try {
-      const response = await fetch(`/api/nexus/replay?index=${index}`, {
-        method: "GET",
-        cache: "no-store",
-        headers: {
-          Accept: "application/json",
-        },
-      });
+      beginLoading();
 
-      const payload = (await response.json()) as
-        ReplaySnapshot | ReplayErrorResponse;
+      try {
+        const response = await fetch(`/api/nexus/replay?index=${index}`, {
+          method: "GET",
+          cache: "no-store",
+          headers: {
+            Accept: "application/json",
+          },
+        });
 
-      if (isReplayErrorResponse(payload)) {
-        throw new Error(payload.message);
+        const payload = (await response.json()) as
+          ReplaySnapshot | ReplayErrorResponse;
+
+        if (isReplayErrorResponse(payload)) {
+          throw new Error(payload.message);
+        }
+
+        if (!response.ok) {
+          throw new Error("Replay snapshot request failed.");
+        }
+
+        if (requestSequence !== requestSequenceRef.current) {
+          return;
+        }
+
+        setSnapshot(payload);
+
+        acceptSnapshot(payload.index, payload.timestamp, payload.complete);
+
+        if (preservePlaying && !payload.complete) {
+          play();
+        }
+      } catch (caughtError) {
+        if (requestSequence !== requestSequenceRef.current) {
+          return;
+        }
+
+        fail(
+          caughtError instanceof Error
+            ? caughtError.message
+            : "Unable to load the replay snapshot.",
+        );
       }
-
-      if (!response.ok) {
-        throw new Error("Replay snapshot request failed.");
-      }
-
-      if (requestSequence !== requestSequenceRef.current) {
-        return;
-      }
-
-      setSnapshot(payload);
-      setRequestedIndex(payload.index);
-
-      if (payload.complete) {
-        setPlaying(false);
-      }
-    } catch (caughtError) {
-      if (requestSequence !== requestSequenceRef.current) {
-        return;
-      }
-
-      setPlaying(false);
-      setError(
-        caughtError instanceof Error
-          ? caughtError.message
-          : "Unable to load the replay snapshot.",
-      );
-    } finally {
-      if (requestSequence === requestSequenceRef.current) {
-        setLoading(false);
-      }
-    }
-  }, []);
+    },
+    [acceptSnapshot, beginLoading, fail, play],
+  );
 
   useEffect(() => {
     const initialLoadTimer = window.setTimeout(() => {
@@ -187,70 +193,77 @@ export function NexusReplayConsole() {
       const nextIndex = snapshot.index + 1;
 
       if (nextIndex >= snapshot.snapshotCount) {
-        setPlaying(false);
+        pause();
         return;
       }
 
-      void loadSnapshot(nextIndex);
+      void loadSnapshot(nextIndex, true);
     }, selectedSpeed.delayMs);
 
     return () => {
       window.clearTimeout(timer);
     };
-  }, [loadSnapshot, playing, selectedSpeed.delayMs, snapshot]);
+  }, [loadSnapshot, pause, playing, selectedSpeed.delayMs, snapshot]);
 
-  function play(): void {
+  function handlePlay(): void {
     if (!snapshot) {
       return;
     }
 
     if (snapshot.complete) {
-      setPlaying(false);
+      reset();
 
-      void loadSnapshot(0).then(() => {
-        setPlaying(true);
-      });
+      void loadSnapshot(0, true);
 
       return;
     }
 
-    setPlaying(true);
+    play();
   }
 
-  function pause(): void {
-    setPlaying(false);
+  function handlePause(): void {
+    pause();
   }
 
-  function reset(): void {
-    setPlaying(false);
+  function handleReset(): void {
+    reset();
     void loadSnapshot(0);
   }
 
-  function goToPreviousSnapshot(): void {
+  function handlePrevious(): void {
     if (!snapshot || snapshot.index <= 0) {
       return;
     }
 
-    setPlaying(false);
-    void loadSnapshot(snapshot.index - 1);
+    pause();
+
+    const index = seek(snapshot.index - 1);
+
+    void loadSnapshot(index);
   }
 
-  function goToNextSnapshot(): void {
-    if (!snapshot || snapshot.index >= snapshot.snapshotCount - 1) {
+  function handleNext(): void {
+    if (!snapshot || snapshot.complete) {
       return;
     }
 
-    setPlaying(false);
-    void loadSnapshot(snapshot.index + 1);
+    pause();
+
+    const index = seek(snapshot.index + 1);
+
+    void loadSnapshot(index);
   }
 
-  function applyRequestedIndex(): void {
+  function handleTimelineCommit(): void {
     if (!snapshot) {
       return;
     }
 
-    setPlaying(false);
-    void loadSnapshot(requestedIndex);
+    pause();
+
+    const index = seek(requestedIndex);
+
+    void loadSnapshot(index);
   }
 
   return (
@@ -264,62 +277,72 @@ export function NexusReplayConsole() {
       </div>
 
       <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-5">
-        <article className="rounded-2xl border border-slate-800 bg-slate-900/70 p-5 shadow-xl shadow-black/10">
+        <article className="rounded-2xl border border-slate-800 bg-slate-900/70 p-5">
           <p className="text-xs font-semibold tracking-[0.16em] text-slate-500 uppercase">
             Runtime
           </p>
+
           <p className="mt-3 text-2xl font-bold text-white">
-            {playing ? "Running" : "Paused"}
+            {playing ? "Running" : status === "error" ? "Error" : "Paused"}
           </p>
-          <p className="mt-1 text-sm text-slate-500">Dataset replay</p>
+
+          <p className="mt-1 text-sm text-slate-500">Shared dataset replay</p>
         </article>
 
-        <article className="rounded-2xl border border-slate-800 bg-slate-900/70 p-5 shadow-xl shadow-black/10">
+        <article className="rounded-2xl border border-slate-800 bg-slate-900/70 p-5">
           <p className="text-xs font-semibold tracking-[0.16em] text-slate-500 uppercase">
             Virtual Time
           </p>
+
           <p className="mt-3 text-2xl font-bold text-white">
             {snapshot ? formatVirtualTime(snapshot.timestamp) : "--:--"}
           </p>
+
           <p className="mt-1 text-sm text-slate-500">
             {snapshot ? formatVirtualDate(snapshot.timestamp) : "Loading"}
           </p>
         </article>
 
-        <article className="rounded-2xl border border-slate-800 bg-slate-900/70 p-5 shadow-xl shadow-black/10">
+        <article className="rounded-2xl border border-slate-800 bg-slate-900/70 p-5">
           <p className="text-xs font-semibold tracking-[0.16em] text-slate-500 uppercase">
             Snapshot
           </p>
+
           <p className="mt-3 text-2xl font-bold text-white">
             {snapshot
               ? `${snapshot.index + 1} / ${snapshot.snapshotCount}`
               : "--"}
           </p>
+
           <p className="mt-1 text-sm text-slate-500">10-minute interval</p>
         </article>
 
-        <article className="rounded-2xl border border-slate-800 bg-slate-900/70 p-5 shadow-xl shadow-black/10">
+        <article className="rounded-2xl border border-slate-800 bg-slate-900/70 p-5">
           <p className="text-xs font-semibold tracking-[0.16em] text-slate-500 uppercase">
             Domain Inputs
           </p>
+
           <p className="mt-3 text-2xl font-bold text-white">
             {snapshot?.datasetCount ?? "--"}
           </p>
+
           <p className="mt-1 text-sm text-slate-500">Synchronized datasets</p>
         </article>
 
-        <article className="rounded-2xl border border-slate-800 bg-slate-900/70 p-5 shadow-xl shadow-black/10">
+        <article className="rounded-2xl border border-slate-800 bg-slate-900/70 p-5">
           <p className="text-xs font-semibold tracking-[0.16em] text-slate-500 uppercase">
             Snapshot Rows
           </p>
+
           <p className="mt-3 text-2xl font-bold text-white">
             {snapshot?.totalRows ?? "--"}
           </p>
+
           <p className="mt-1 text-sm text-slate-500">Operational records</p>
         </article>
       </div>
 
-      <article className="rounded-2xl border border-slate-800 bg-slate-900/70 p-5 shadow-xl shadow-black/10">
+      <article className="rounded-2xl border border-slate-800 bg-slate-900/70 p-5">
         <div className="flex flex-col gap-5">
           <div className="flex flex-col gap-4 xl:flex-row xl:items-center xl:justify-between">
             <div>
@@ -329,6 +352,7 @@ export function NexusReplayConsole() {
               >
                 Operational Replay Controls
               </h2>
+
               <p className="mt-1 text-sm text-slate-500">
                 Run the synchronized 24-hour airport scenario.
               </p>
@@ -337,36 +361,36 @@ export function NexusReplayConsole() {
             <div className="flex flex-wrap gap-2">
               <button
                 type="button"
-                onClick={playing ? pause : play}
+                onClick={playing ? handlePause : handlePlay}
                 disabled={!snapshot || loading}
-                className="rounded-lg border border-cyan-500/40 bg-cyan-500/20 px-4 py-2 text-sm font-semibold text-cyan-100 transition hover:bg-cyan-500/30 disabled:cursor-not-allowed disabled:opacity-40"
+                className="rounded-lg border border-cyan-500/40 bg-cyan-500/20 px-4 py-2 text-sm font-semibold text-cyan-100 disabled:cursor-not-allowed disabled:opacity-40"
               >
                 {playing ? "Pause" : "Play"}
               </button>
 
               <button
                 type="button"
-                onClick={goToPreviousSnapshot}
+                onClick={handlePrevious}
                 disabled={!snapshot || snapshot.index === 0 || loading}
-                className="rounded-lg border border-slate-700 bg-slate-800 px-4 py-2 text-sm font-semibold text-slate-200 transition hover:bg-slate-700 disabled:cursor-not-allowed disabled:opacity-40"
+                className="rounded-lg border border-slate-700 bg-slate-800 px-4 py-2 text-sm font-semibold text-slate-200 disabled:cursor-not-allowed disabled:opacity-40"
               >
                 Previous
               </button>
 
               <button
                 type="button"
-                onClick={goToNextSnapshot}
+                onClick={handleNext}
                 disabled={!snapshot || snapshot.complete || loading}
-                className="rounded-lg border border-slate-700 bg-slate-800 px-4 py-2 text-sm font-semibold text-slate-200 transition hover:bg-slate-700 disabled:cursor-not-allowed disabled:opacity-40"
+                className="rounded-lg border border-slate-700 bg-slate-800 px-4 py-2 text-sm font-semibold text-slate-200 disabled:cursor-not-allowed disabled:opacity-40"
               >
                 Next
               </button>
 
               <button
                 type="button"
-                onClick={reset}
+                onClick={handleReset}
                 disabled={!snapshot || loading}
-                className="rounded-lg border border-slate-700 bg-slate-950 px-4 py-2 text-sm font-semibold text-slate-300 transition hover:bg-slate-800 disabled:cursor-not-allowed disabled:opacity-40"
+                className="rounded-lg border border-slate-700 bg-slate-950 px-4 py-2 text-sm font-semibold text-slate-300 disabled:cursor-not-allowed disabled:opacity-40"
               >
                 Reset
               </button>
@@ -376,6 +400,7 @@ export function NexusReplayConsole() {
           <div>
             <div className="mb-2 flex items-center justify-between gap-3 text-sm">
               <span className="text-slate-400">Timeline progress</span>
+
               <span className="font-semibold text-cyan-300">
                 {snapshot?.progressPercent.toFixed(2) ?? "0.00"}%
               </span>
@@ -407,11 +432,11 @@ export function NexusReplayConsole() {
                 max={(snapshot?.snapshotCount ?? 144) - 1}
                 step={1}
                 value={requestedIndex}
-                onChange={(event) =>
-                  setRequestedIndex(Number(event.target.value))
-                }
-                onMouseUp={applyRequestedIndex}
-                onTouchEnd={applyRequestedIndex}
+                onChange={(event) => {
+                  setRequestedIndex(Number(event.target.value));
+                }}
+                onMouseUp={handleTimelineCommit}
+                onTouchEnd={handleTimelineCommit}
                 disabled={!snapshot || loading}
                 className="w-full accent-cyan-400 disabled:opacity-40"
               />
@@ -428,10 +453,16 @@ export function NexusReplayConsole() {
               <select
                 id="nexus-replay-speed"
                 value={speed}
-                onChange={(event) => setSpeed(Number(event.target.value))}
-                className="min-w-32 rounded-lg border border-slate-700 bg-slate-950 px-3 py-2 text-sm font-semibold text-slate-200 outline-none focus:border-cyan-500 focus:ring-2 focus:ring-cyan-500/20"
+                onChange={(event) => {
+                  const value = Number(event.target.value);
+
+                  if (isNexusReplaySpeed(value)) {
+                    setSpeed(value);
+                  }
+                }}
+                className="min-w-32 rounded-lg border border-slate-700 bg-slate-950 px-3 py-2 text-sm font-semibold text-slate-200"
               >
-                {REPLAY_SPEED_OPTIONS.map((option) => (
+                {NEXUS_REPLAY_SPEED_OPTIONS.map((option) => (
                   <option key={option.value} value={option.value}>
                     {option.label}
                   </option>
@@ -457,19 +488,14 @@ export function NexusReplayConsole() {
         </div>
       </article>
 
-      <article className="rounded-2xl border border-slate-800 bg-slate-900/70 p-5 shadow-xl shadow-black/10">
-        <div className="flex flex-col gap-2 border-b border-slate-800 pb-4 sm:flex-row sm:items-end sm:justify-between">
-          <div>
-            <h2 className="text-lg font-semibold text-white">
-              Synchronized Domain Snapshot
-            </h2>
-            <p className="mt-1 text-sm text-slate-500">
-              Operational records active at the current virtual timestamp.
-            </p>
-          </div>
+      <article className="rounded-2xl border border-slate-800 bg-slate-900/70 p-5">
+        <div className="border-b border-slate-800 pb-4">
+          <h2 className="text-lg font-semibold text-white">
+            Synchronized Domain Snapshot
+          </h2>
 
-          <p className="text-sm font-semibold text-slate-400">
-            {snapshot?.timestamp ?? "No snapshot loaded"}
+          <p className="mt-1 text-sm text-slate-500">
+            Operational records active at the current virtual timestamp.
           </p>
         </div>
 
@@ -482,8 +508,9 @@ export function NexusReplayConsole() {
               <div className="flex items-start justify-between gap-3">
                 <div className="min-w-0">
                   <p className="font-semibold text-slate-200">
-                    {domainLabel(dataset.filename)}
+                    {getDomainLabel(dataset.filename)}
                   </p>
+
                   <p className="mt-1 truncate text-xs text-slate-600">
                     {dataset.filename}
                   </p>
@@ -495,12 +522,6 @@ export function NexusReplayConsole() {
               </div>
             </div>
           ))}
-
-          {!snapshot && !loading && (
-            <p className="text-sm text-slate-500">
-              No synchronized snapshot is available.
-            </p>
-          )}
         </div>
       </article>
     </section>

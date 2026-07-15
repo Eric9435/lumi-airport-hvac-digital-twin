@@ -16,6 +16,11 @@ const componentSource = readFileSync(
   "utf8",
 );
 
+const replayStoreSource = readFileSync(
+  resolve(process.cwd(), "src/store/nexus-replay-store.ts"),
+  "utf8",
+);
+
 const normalizedComponentSource = componentSource.replace(/\s+/g, " ").trim();
 
 describe("LUMI Nexus replay console", () => {
@@ -65,6 +70,20 @@ describe("LUMI Nexus replay console", () => {
     expect(componentSource).not.toContain("const errorPayload =");
   });
 
+  it("uses the shared Zustand replay state", () => {
+    expect(componentSource).toContain('from "@/store/nexus-replay-store"');
+
+    expect(componentSource).toContain("useNexusReplayStore()");
+
+    expect(componentSource).toContain("acceptSnapshot(");
+
+    expect(componentSource).toContain("beginLoading()");
+
+    expect(componentSource).not.toContain("setPlaying(");
+
+    expect(componentSource).not.toContain("const [playing");
+  });
+
   it("provides complete replay controls", () => {
     for (const control of [
       "Play",
@@ -79,9 +98,22 @@ describe("LUMI Nexus replay console", () => {
     }
   });
 
-  it("provides accelerated deterministic replay speeds", () => {
+  it("provides accelerated deterministic replay speeds through the shared store", () => {
+    expect(componentSource).toContain("NEXUS_REPLAY_SPEED_OPTIONS");
+
+    expect(componentSource).toContain("isNexusReplaySpeed");
+
     for (const speed of [60, 120, 600, 1200]) {
-      expect(componentSource).toContain(`value: ${speed}`);
+      expect(replayStoreSource).toContain(`value: ${speed}`);
+    }
+
+    for (const delay of [
+      "delayMs: 10_000",
+      "delayMs: 5_000",
+      "delayMs: 1_000",
+      "delayMs: 500",
+    ]) {
+      expect(replayStoreSource).toContain(delay);
     }
   });
 
