@@ -26,4 +26,4 @@ export const publishNexusEventSchema = nexusEventSchema.omit({
   timestamp: true,
 });
 
-export type PublishNexusEvent = z.infer<typeof publishNexusEventSchema>;
+export type PublishNexusEvent = z.input<typeof publishNexusEventSchema>;

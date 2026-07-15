@@ -23,6 +23,8 @@ export const NEXUS_EVENT_TYPES = {
   APPROVAL_APPROVED: "approval.approved",
   APPROVAL_REJECTED: "approval.rejected",
   APPROVAL_EXPIRED: "approval.expired",
+  APPROVAL_EXECUTED: "approval.executed",
+  APPROVAL_FAILED: "approval.failed",
 
   NEXUS_DOMAIN_CONNECTED: "nexus-domain.connected",
   NEXUS_DOMAIN_DISCONNECTED: "nexus-domain.disconnected",

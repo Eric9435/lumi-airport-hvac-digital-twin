@@ -47,4 +47,4 @@ export const createNexusCommandSchema = nexusCommandSchema.omit({
   executionStatus: true,
 });
 
-export type CreateNexusCommand = z.infer<typeof createNexusCommandSchema>;
+export type CreateNexusCommand = z.input<typeof createNexusCommandSchema>;

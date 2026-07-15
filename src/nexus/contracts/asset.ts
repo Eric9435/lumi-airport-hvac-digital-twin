@@ -32,4 +32,4 @@ export const createNexusAssetSchema = nexusAssetSchema.omit({
   updatedAt: true,
 });
 
-export type CreateNexusAsset = z.infer<typeof createNexusAssetSchema>;
+export type CreateNexusAsset = z.input<typeof createNexusAssetSchema>;
