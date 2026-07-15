@@ -12,7 +12,7 @@ describe("Nexus platform snapshot", () => {
 
     expect(snapshot.health.connectedDomains).toBe(7);
     expect(snapshot.health.enabledDomains).toBe(4);
-    expect(snapshot.health.registeredNexusAssets).toBe(36);
+    expect(snapshot.health.registeredNexusAssets).toBe(43);
     expect(snapshot.health.powerFoundationAssets).toBe(7);
     expect(snapshot.health.registeredAgents).toBeGreaterThanOrEqual(4);
   });
