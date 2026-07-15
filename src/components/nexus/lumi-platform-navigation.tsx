@@ -55,6 +55,13 @@ const navigationItems: PlatformNavigationItem[] = [
     routeMode: "section",
   },
   {
+    href: "/nexus/flight-operations",
+    shortLabel: "Flights",
+    label: "Flight Operations",
+    description: "Airport flight, gate and delay-pressure intelligence",
+    routeMode: "section",
+  },
+  {
     href: "/dashboard",
     shortLabel: "HVAC",
     label: "HVAC Twin",
