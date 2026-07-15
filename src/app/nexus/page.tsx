@@ -61,15 +61,15 @@ export default async function NexusPage() {
   ];
 
   return (
-    <main className="min-h-screen bg-slate-950 px-4 py-8 text-slate-100 sm:px-6 lg:px-8">
-      <div className="mx-auto max-w-7xl space-y-8">
-        <header className="rounded-3xl border border-slate-800 bg-slate-900/70 p-6 shadow-2xl shadow-black/20 backdrop-blur md:p-8">
+    <main className="min-h-screen bg-slate-950 px-4 py-6 text-slate-100 sm:px-6 lg:px-8">
+      <div className="mx-auto max-w-[1600px] space-y-8">
+        <header className="border-b border-slate-800 pb-6">
           <div className="flex flex-col gap-6 lg:flex-row lg:items-end lg:justify-between">
             <div className="max-w-4xl">
               <p className="text-sm font-semibold tracking-[0.3em] text-cyan-300 uppercase">
                 Autonomous Airport Infrastructure Intelligence Platform
               </p>
-              <h1 className="mt-3 text-4xl font-semibold tracking-tight text-white md:text-6xl">
+              <h1 className="mt-3 text-3xl font-semibold tracking-tight text-white sm:text-4xl">
                 LUMI Nexus
               </h1>
               <p className="mt-4 max-w-3xl text-base leading-7 text-slate-300 md:text-lg">
@@ -102,7 +102,7 @@ export default async function NexusPage() {
           {cards.map((card) => (
             <article
               key={card.label}
-              className="rounded-2xl border border-slate-800 bg-slate-900/60 p-5"
+              className="rounded-2xl border border-slate-800 bg-slate-900/70 p-5 shadow-xl shadow-black/10"
             >
               <p className="text-sm text-slate-400">{card.label}</p>
               <p className="mt-2 text-3xl font-semibold text-white">
@@ -128,7 +128,7 @@ export default async function NexusPage() {
             {snapshot.domains.map((domain) => (
               <article
                 key={domain.twinType}
-                className="rounded-2xl border border-slate-800 bg-slate-900/60 p-5"
+                className="rounded-2xl border border-slate-800 bg-slate-900/70 p-5 shadow-xl shadow-black/10"
               >
                 <div className="flex items-start justify-between gap-4">
                   <div>
@@ -169,7 +169,7 @@ export default async function NexusPage() {
         </section>
 
         <section className="grid gap-6 xl:grid-cols-2">
-          <article className="rounded-2xl border border-slate-800 bg-slate-900/60 p-5">
+          <article className="rounded-2xl border border-slate-800 bg-slate-900/70 p-5 shadow-xl shadow-black/10">
             <h2 className="text-xl font-semibold text-white">
               Registered Agents
             </h2>
@@ -177,7 +177,7 @@ export default async function NexusPage() {
               {snapshot.agents.map((agent) => (
                 <div
                   key={agent.agentId}
-                  className="rounded-xl border border-slate-800 bg-slate-950/50 p-4"
+                  className="rounded-xl border border-slate-800 bg-slate-950/60 p-4"
                 >
                   <div className="flex flex-wrap items-center justify-between gap-3">
                     <h3 className="font-medium text-slate-100">{agent.name}</h3>
@@ -200,7 +200,7 @@ export default async function NexusPage() {
             </div>
           </article>
 
-          <article className="rounded-2xl border border-slate-800 bg-slate-900/60 p-5">
+          <article className="rounded-2xl border border-slate-800 bg-slate-900/70 p-5 shadow-xl shadow-black/10">
             <h2 className="text-xl font-semibold text-white">
               Recent Nexus Events
             </h2>
@@ -210,7 +210,7 @@ export default async function NexusPage() {
                 snapshot.recentEvents.map((event) => (
                   <div
                     key={event.eventId}
-                    className="rounded-xl border border-slate-800 bg-slate-950/50 p-4"
+                    className="rounded-xl border border-slate-800 bg-slate-950/60 p-4"
                   >
                     <div className="flex flex-wrap items-center justify-between gap-3">
                       <p className="font-medium text-slate-100">
@@ -242,7 +242,7 @@ export default async function NexusPage() {
         </section>
 
         <section className="grid gap-6 xl:grid-cols-2">
-          <article className="rounded-2xl border border-slate-800 bg-slate-900/60 p-5">
+          <article className="rounded-2xl border border-slate-800 bg-slate-900/70 p-5 shadow-xl shadow-black/10">
             <h2 className="text-xl font-semibold text-white">Asset Registry</h2>
 
             <div className="mt-4 overflow-x-auto">
@@ -296,7 +296,7 @@ export default async function NexusPage() {
             )}
           </article>
 
-          <article className="rounded-2xl border border-slate-800 bg-slate-900/60 p-5">
+          <article className="rounded-2xl border border-slate-800 bg-slate-900/70 p-5 shadow-xl shadow-black/10">
             <h2 className="text-xl font-semibold text-white">
               Human Approval Queue
             </h2>
@@ -306,7 +306,7 @@ export default async function NexusPage() {
                 snapshot.approvals.slice(0, 10).map((approval) => (
                   <div
                     key={approval.approvalId}
-                    className="rounded-xl border border-slate-800 bg-slate-950/50 p-4"
+                    className="rounded-xl border border-slate-800 bg-slate-950/60 p-4"
                   >
                     <div className="flex flex-wrap items-center justify-between gap-3">
                       <p className="font-medium text-slate-100">

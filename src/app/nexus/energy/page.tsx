@@ -68,16 +68,16 @@ export default async function EnergyTwinPage() {
   ];
 
   return (
-    <main className="min-h-screen bg-slate-950 px-4 py-8 text-slate-100 sm:px-6 lg:px-8">
-      <div className="mx-auto max-w-7xl space-y-8">
-        <header className="rounded-3xl border border-slate-800 bg-slate-900/70 p-6 shadow-2xl shadow-black/20 md:p-8">
+    <main className="min-h-screen bg-slate-950 px-4 py-6 text-slate-100 sm:px-6 lg:px-8">
+      <div className="mx-auto max-w-[1600px] space-y-8">
+        <header className="border-b border-slate-800 pb-6">
           <div className="flex flex-col gap-6 lg:flex-row lg:items-end lg:justify-between">
             <div>
               <p className="text-sm font-semibold tracking-[0.28em] text-cyan-300 uppercase">
                 LUMI Nexus Cross-Domain Twin
               </p>
 
-              <h1 className="mt-3 text-4xl font-semibold tracking-tight text-white md:text-5xl">
+              <h1 className="mt-3 text-3xl font-semibold tracking-tight text-white sm:text-4xl">
                 Energy Twin
               </h1>
 
@@ -102,21 +102,21 @@ export default async function EnergyTwinPage() {
           <div className="mt-6 flex flex-wrap gap-3">
             <Link
               href="/nexus"
-              className="rounded-lg border border-slate-700 bg-slate-800 px-4 py-2 text-sm font-medium text-slate-200 transition hover:border-cyan-500/50 hover:text-white"
+              className="rounded-xl border border-cyan-500/40 bg-cyan-500/10 px-4 py-2 text-sm font-medium text-cyan-300 transition hover:bg-cyan-500/20"
             >
               Back to Nexus
             </Link>
 
             <Link
               href="/nexus/power"
-              className="rounded-lg border border-slate-700 px-4 py-2 text-sm font-medium text-slate-300 transition hover:border-cyan-500/50 hover:text-white"
+              className="rounded-xl border border-slate-700 bg-slate-900 px-4 py-2 text-sm font-medium text-slate-300 transition hover:bg-slate-800"
             >
               Open Power Twin
             </Link>
 
             <Link
               href="/hvac"
-              className="rounded-lg border border-slate-700 px-4 py-2 text-sm font-medium text-slate-300 transition hover:border-cyan-500/50 hover:text-white"
+              className="rounded-xl border border-slate-700 bg-slate-900 px-4 py-2 text-sm font-medium text-slate-300 transition hover:bg-slate-800"
             >
               Open HVAC Twin
             </Link>
@@ -127,7 +127,7 @@ export default async function EnergyTwinPage() {
           {cards.map((card) => (
             <article
               key={card.label}
-              className="rounded-2xl border border-slate-800 bg-slate-900/60 p-5"
+              className="rounded-2xl border border-slate-800 bg-slate-900/70 p-5 shadow-xl shadow-black/10"
             >
               <p className="text-sm text-slate-400">{card.label}</p>
 
@@ -141,7 +141,7 @@ export default async function EnergyTwinPage() {
         </section>
 
         <section className="grid gap-6 xl:grid-cols-[1.4fr_0.8fr]">
-          <article className="rounded-2xl border border-slate-800 bg-slate-900/60 p-5">
+          <article className="rounded-2xl border border-slate-800 bg-slate-900/70 p-5 shadow-xl shadow-black/10">
             <div className="flex flex-wrap items-center justify-between gap-4">
               <div>
                 <h2 className="text-xl font-semibold text-white">
@@ -225,7 +225,7 @@ export default async function EnergyTwinPage() {
           </article>
 
           <div className="space-y-6">
-            <article className="rounded-2xl border border-slate-800 bg-slate-900/60 p-5">
+            <article className="rounded-2xl border border-slate-800 bg-slate-900/70 p-5 shadow-xl shadow-black/10">
               <h2 className="text-xl font-semibold text-white">
                 Financial & Carbon Model
               </h2>
@@ -274,7 +274,7 @@ export default async function EnergyTwinPage() {
               </dl>
             </article>
 
-            <article className="rounded-2xl border border-slate-800 bg-slate-900/60 p-5">
+            <article className="rounded-2xl border border-slate-800 bg-slate-900/70 p-5 shadow-xl shadow-black/10">
               <h2 className="text-xl font-semibold text-white">
                 Energy Intelligence Agent
               </h2>
@@ -311,7 +311,7 @@ export default async function EnergyTwinPage() {
                       {snapshot.finding.recommendedActions.map((action) => (
                         <div
                           key={action.actionId}
-                          className="rounded-xl border border-slate-800 bg-slate-950/50 p-4"
+                          className="rounded-xl border border-slate-800 bg-slate-950/60 p-4"
                         >
                           <p className="font-medium text-slate-200">
                             {action.title}

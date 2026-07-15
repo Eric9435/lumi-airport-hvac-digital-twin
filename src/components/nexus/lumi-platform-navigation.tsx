@@ -65,7 +65,7 @@ export function LumiPlatformNavigation() {
         Skip to main content
       </a>
 
-      <header className="fixed inset-x-0 top-0 z-50 border-b border-slate-800/90 bg-slate-950/95 shadow-lg shadow-black/20 backdrop-blur-xl">
+      <header className="fixed inset-x-0 top-0 z-50 border-b border-slate-800/90 bg-slate-950/95 shadow-xl shadow-black/20 backdrop-blur-xl">
         <nav
           aria-label="LUMI platform navigation"
           className="mx-auto flex min-h-16 max-w-[1600px] items-center justify-between gap-3 px-3 sm:px-6 lg:px-8"
@@ -85,7 +85,7 @@ export function LumiPlatformNavigation() {
           </Link>
 
           <div className="overflow-x-auto">
-            <div className="flex min-w-max items-center gap-1 rounded-xl border border-slate-800 bg-slate-900/90 p-1">
+            <div className="flex min-w-max items-center gap-1 rounded-xl border border-slate-800 bg-slate-900/70 p-1 shadow-xl shadow-black/10">
               {navigationItems.map((item) => {
                 const active = isActiveRoute(pathname, item);
 
@@ -99,8 +99,8 @@ export function LumiPlatformNavigation() {
                       "rounded-lg px-3 py-2 text-xs font-semibold transition-all sm:px-4 sm:text-sm",
                       "outline-none focus-visible:ring-2 focus-visible:ring-cyan-400",
                       active
-                        ? "bg-cyan-400 text-slate-950 shadow-md shadow-cyan-950/30"
-                        : "text-slate-300 hover:bg-slate-800 hover:text-white",
+                        ? "border border-cyan-500/40 bg-cyan-500/20 text-cyan-200 shadow-md shadow-black/10"
+                        : "border border-transparent text-slate-300 hover:border-slate-700 hover:bg-slate-800 hover:text-white",
                     ].join(" ")}
                   >
                     <span className="lg:hidden">{item.shortLabel}</span>
