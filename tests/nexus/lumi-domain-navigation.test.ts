@@ -17,7 +17,7 @@ describe("LUMI domain navigation", () => {
 
     expect(navigation).toContain('href: "/nexus/power"');
 
-    expect(navigation).toContain('href: "/hvac"');
+    expect(navigation).toContain('href: "/dashboard"');
   });
 
   it("uses exact matching for the Nexus overview", () => {

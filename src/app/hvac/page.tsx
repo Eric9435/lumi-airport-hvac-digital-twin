@@ -1,5 +1,9 @@
 import { redirect } from "next/navigation";
 
-export default function HomePage() {
+/**
+ * Canonical HVAC dashboard route is /dashboard.
+ * /hvac is retained as a stable compatibility route.
+ */
+export default function HvacRoute(): never {
   redirect("/dashboard");
 }

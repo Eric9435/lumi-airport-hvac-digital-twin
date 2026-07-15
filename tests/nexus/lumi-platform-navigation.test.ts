@@ -14,7 +14,7 @@ describe("LUMI platform navigation", () => {
     );
 
     expect(source).toContain('href: "/nexus"');
-    expect(source).toContain('href: "/hvac"');
+    expect(source).toContain('href: "/dashboard"');
   });
 
   it("marks the active route accessibly", () => {

@@ -34,7 +34,7 @@ const navigationItems: PlatformNavigationItem[] = [
     routeMode: "section",
   },
   {
-    href: "/hvac",
+    href: "/dashboard",
     shortLabel: "HVAC",
     label: "HVAC Twin",
     description: "Operational airport HVAC Digital Twin",

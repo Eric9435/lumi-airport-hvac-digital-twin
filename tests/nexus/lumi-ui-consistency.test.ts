@@ -60,6 +60,6 @@ describe("LUMI UI consistency", () => {
 
     expect(source).toContain('href: "/nexus/energy"');
 
-    expect(source).toContain('href: "/hvac"');
+    expect(source).toContain('href: "/dashboard"');
   });
 });
