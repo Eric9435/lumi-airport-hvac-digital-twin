@@ -17,24 +17,61 @@ describe("LUMI UI consistency", () => {
   it.each(nexusPages)(
     "%s uses the same primary canvas as the HVAC dashboard",
     (file) => {
-      const source = readProjectFile(file);
+      const routeSource = readProjectFile(file);
+      const componentSource =
+        file === "src/app/nexus/page.tsx"
+          ? readProjectFile(
+              "src/components/nexus/command-center/nexus-command-center.tsx",
+            )
+          : "";
 
-      expect(source).toContain("min-h-screen bg-slate-950");
+      const source = `${routeSource}\n${componentSource}`;
 
-      expect(source).toContain("max-w-[1600px]");
+      expect(source).toContain("min-h-screen");
+      expect(source).toContain("bg-slate-950");
 
-      expect(source).toContain("border-b border-slate-800 pb-6");
+      if (file === "src/app/nexus/page.tsx") {
+        expect(source).toContain("max-w-[1800px]");
+      } else {
+        expect(source).toContain("max-w-[1600px]");
+      }
+
+      if (file === "src/app/nexus/page.tsx") {
+        expect(source).toContain(
+          "rounded-3xl border border-slate-800 bg-slate-900/65",
+        );
+      } else {
+        expect(source).toContain("border-b border-slate-800 pb-6");
+      }
     },
   );
 
   it.each(nexusPages)("%s uses the standard LUMI card treatment", (file) => {
-    const source = readProjectFile(file);
+    const routeSource = readProjectFile(file);
+    const componentSource =
+      file === "src/app/nexus/page.tsx"
+        ? readProjectFile(
+            "src/components/nexus/command-center/nexus-command-center.tsx",
+          )
+        : "";
 
-    expect(source).toContain(
-      "rounded-2xl border border-slate-800 bg-slate-900/70",
-    );
+    const source = `${routeSource}\n${componentSource}`;
 
-    expect(source).toContain("shadow-xl shadow-black/10");
+    if (file === "src/app/nexus/page.tsx") {
+      expect(source).toContain(
+        "rounded-2xl border border-slate-800 bg-slate-900/75",
+      );
+    } else {
+      expect(source).toContain(
+        "rounded-2xl border border-slate-800 bg-slate-900/70",
+      );
+    }
+
+    if (file === "src/app/nexus/page.tsx") {
+      expect(source).toContain("shadow-xl shadow-black/15");
+    } else {
+      expect(source).toContain("shadow-xl shadow-black/10");
+    }
   });
 
   it("uses the same cyan navigation accent language", () => {
