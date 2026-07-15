@@ -5,17 +5,17 @@ import { LumiPlatformShell } from "@/components/nexus";
 
 export const metadata: Metadata = {
   title: {
-    default: "LUMI HVAC Digital Twin",
-    template: "%s | LUMI HVAC",
+    default: "LUMI Nexus Command Center",
+    template: "%s | LUMI Nexus",
   },
   description:
-    "Airport HVAC Digital Twin with simulation, controls, energy intelligence, diagnostics and predictive maintenance.",
+    "Unified airport infrastructure intelligence, Digital Twin and human-centred command platform.",
 };
 
-interface HvacLayoutProps {
+interface NexusLayoutProps {
   children: ReactNode;
 }
 
-export default function HvacLayout({ children }: HvacLayoutProps) {
+export default function NexusLayout({ children }: NexusLayoutProps) {
   return <LumiPlatformShell>{children}</LumiPlatformShell>;
 }
