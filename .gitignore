@@ -106,3 +106,6 @@ next.config.ts.backup
 *.bak
 *.tmp
 .fix-backups/
+
+# Local migration safety backups
+.migration-backups/
