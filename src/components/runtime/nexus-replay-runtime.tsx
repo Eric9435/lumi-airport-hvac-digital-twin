@@ -150,7 +150,7 @@ export function NexusReplayRuntime() {
   }, []);
 
   useEffect(() => {
-    if (loadedIndexRef.current === currentIndex) {
+    if (loadedIndexRef.current === currentIndex && timestamp !== null) {
       return;
     }
 
@@ -161,14 +161,19 @@ export function NexusReplayRuntime() {
     return () => {
       window.clearTimeout(synchronizationTimer);
     };
-  }, [currentIndex, synchronizeSnapshot]);
+  }, [currentIndex, synchronizeSnapshot, timestamp]);
 
   useEffect(() => {
-    if (status !== "playing" || timestamp === null) {
+    if (status !== "playing") {
       return;
     }
 
     const replayTimer = window.setTimeout(() => {
+      if (timestamp === null) {
+        void synchronizeSnapshot(currentIndex);
+        return;
+      }
+
       const nextIndex = currentIndex + 1;
 
       if (nextIndex >= snapshotCount) {

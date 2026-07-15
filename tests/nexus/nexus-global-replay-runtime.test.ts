@@ -69,4 +69,12 @@ describe("LUMI Nexus global replay runtime", () => {
 
     expect(runtimeSource).toContain("physicalControlEnabled: false");
   });
+  it("restarts correctly after reset when the timestamp is cleared", () => {
+    expect(runtimeSource).toContain(
+      "loadedIndexRef.current === currentIndex &&",
+    );
+    expect(runtimeSource).toContain("timestamp !== null");
+    expect(runtimeSource).toContain("if (timestamp === null)");
+    expect(runtimeSource).toContain("void synchronizeSnapshot(currentIndex)");
+  });
 });

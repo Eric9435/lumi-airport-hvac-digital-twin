@@ -41,7 +41,13 @@ describe("LUMI UI consistency", () => {
           "rounded-3xl border border-slate-800 bg-slate-900/65",
         );
       } else {
-        expect(source).toContain("border-b border-slate-800 pb-6");
+        if (file === "src/app/nexus/page.tsx") {
+          expect(source).toContain(
+            "rounded-3xl border border-slate-800 bg-slate-900/65",
+          );
+        } else {
+          expect(source).toContain("border-b border-slate-800 pb-6");
+        }
       }
     },
   );
