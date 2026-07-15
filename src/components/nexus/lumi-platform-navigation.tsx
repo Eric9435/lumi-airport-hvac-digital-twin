@@ -48,6 +48,13 @@ const navigationItems: PlatformNavigationItem[] = [
     routeMode: "section",
   },
   {
+    href: "/nexus/passenger-flow",
+    shortLabel: "Flow",
+    label: "Passenger Flow",
+    description: "Airport passenger demand and congestion intelligence",
+    routeMode: "section",
+  },
+  {
     href: "/dashboard",
     shortLabel: "HVAC",
     label: "HVAC Twin",
