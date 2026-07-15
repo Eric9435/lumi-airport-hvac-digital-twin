@@ -27,6 +27,13 @@ const navigationItems: PlatformNavigationItem[] = [
     routeMode: "section",
   },
   {
+    href: "/nexus/energy",
+    shortLabel: "Energy",
+    label: "Energy Twin",
+    description: "Cross-domain demand and efficiency intelligence",
+    routeMode: "section",
+  },
+  {
     href: "/hvac",
     shortLabel: "HVAC",
     label: "HVAC Twin",
@@ -72,7 +79,7 @@ export function LumiPlatformNavigation() {
               LUMI NEXUS
             </p>
 
-            <p className="hidden truncate text-xs text-slate-500 lg:block">
+            <p className="hidden truncate text-xs text-slate-500 xl:block">
               Autonomous Airport Infrastructure Intelligence
             </p>
           </Link>
@@ -96,9 +103,9 @@ export function LumiPlatformNavigation() {
                         : "text-slate-300 hover:bg-slate-800 hover:text-white",
                     ].join(" ")}
                   >
-                    <span className="sm:hidden">{item.shortLabel}</span>
+                    <span className="lg:hidden">{item.shortLabel}</span>
 
-                    <span className="hidden sm:inline">{item.label}</span>
+                    <span className="hidden lg:inline">{item.label}</span>
                   </Link>
                 );
               })}
