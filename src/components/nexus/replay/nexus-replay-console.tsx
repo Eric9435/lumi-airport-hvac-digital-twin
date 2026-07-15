@@ -1,12 +1,14 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 
 import {
   isNexusReplaySpeed,
   NEXUS_REPLAY_SPEED_OPTIONS,
   useNexusReplayStore,
 } from "@/store/nexus-replay-store";
+
+import { NEXUS_REPLAY_SNAPSHOT_EVENT } from "@/components/runtime/nexus-replay-runtime";
 
 interface ReplayDatasetSnapshot {
   datasetId: string;
@@ -94,6 +96,7 @@ export function NexusReplayConsole() {
   const requestSequenceRef = useRef(0);
 
   const {
+    currentIndex,
     requestedIndex,
     speed,
     status,
@@ -112,13 +115,6 @@ export function NexusReplayConsole() {
   const loading = status === "loading";
 
   const playing = status === "playing";
-
-  const selectedSpeed = useMemo(
-    () =>
-      NEXUS_REPLAY_SPEED_OPTIONS.find((option) => option.value === speed) ??
-      NEXUS_REPLAY_SPEED_OPTIONS[2],
-    [speed],
-  );
 
   const loadSnapshot = useCallback(
     async (index: number, preservePlaying = false) => {
@@ -176,34 +172,30 @@ export function NexusReplayConsole() {
 
   useEffect(() => {
     const initialLoadTimer = window.setTimeout(() => {
-      void loadSnapshot(0);
+      void loadSnapshot(currentIndex);
     }, 0);
 
     return () => {
       window.clearTimeout(initialLoadTimer);
     };
-  }, [loadSnapshot]);
+  }, [currentIndex, loadSnapshot]);
 
   useEffect(() => {
-    if (!playing || !snapshot) {
-      return;
+    function handleRuntimeSnapshot(event: Event): void {
+      const replayEvent = event as CustomEvent<ReplaySnapshot>;
+
+      setSnapshot(replayEvent.detail);
     }
 
-    const timer = window.setTimeout(() => {
-      const nextIndex = snapshot.index + 1;
-
-      if (nextIndex >= snapshot.snapshotCount) {
-        pause();
-        return;
-      }
-
-      void loadSnapshot(nextIndex, true);
-    }, selectedSpeed.delayMs);
+    window.addEventListener(NEXUS_REPLAY_SNAPSHOT_EVENT, handleRuntimeSnapshot);
 
     return () => {
-      window.clearTimeout(timer);
+      window.removeEventListener(
+        NEXUS_REPLAY_SNAPSHOT_EVENT,
+        handleRuntimeSnapshot,
+      );
     };
-  }, [loadSnapshot, pause, playing, selectedSpeed.delayMs, snapshot]);
+  }, []);
 
   function handlePlay(): void {
     if (!snapshot) {
@@ -212,9 +204,7 @@ export function NexusReplayConsole() {
 
     if (snapshot.complete) {
       reset();
-
-      void loadSnapshot(0, true);
-
+      play();
       return;
     }
 
@@ -227,7 +217,6 @@ export function NexusReplayConsole() {
 
   function handleReset(): void {
     reset();
-    void loadSnapshot(0);
   }
 
   function handlePrevious(): void {
@@ -237,9 +226,7 @@ export function NexusReplayConsole() {
 
     pause();
 
-    const index = seek(snapshot.index - 1);
-
-    void loadSnapshot(index);
+    seek(snapshot.index - 1);
   }
 
   function handleNext(): void {
@@ -249,9 +236,7 @@ export function NexusReplayConsole() {
 
     pause();
 
-    const index = seek(snapshot.index + 1);
-
-    void loadSnapshot(index);
+    seek(snapshot.index + 1);
   }
 
   function handleTimelineCommit(): void {
@@ -261,9 +246,7 @@ export function NexusReplayConsole() {
 
     pause();
 
-    const index = seek(requestedIndex);
-
-    void loadSnapshot(index);
+    seek(requestedIndex);
   }
 
   return (

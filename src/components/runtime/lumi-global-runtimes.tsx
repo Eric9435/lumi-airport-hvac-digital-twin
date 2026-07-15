@@ -1,5 +1,7 @@
 "use client";
 
+import { NexusReplayRuntime } from "@/components/runtime/nexus-replay-runtime";
+
 import { CsvDashboardPlantBridge } from "@/components/dashboard/csv-dashboard-plant-bridge";
 import { EnterprisePlantRuntime } from "@/components/enterprise/enterprise-plant-runtime";
 import { SensorReplayRuntime } from "@/components/sensor-data/sensor-replay-runtime";
@@ -20,6 +22,7 @@ import CsvSequenceTrigger from "@/components/enterprise/csv-sequence-trigger";
 export function LumiGlobalRuntimes() {
   return (
     <>
+      <NexusReplayRuntime />
       <SensorReplayRuntime />
       <CsvSequenceTrigger />
       <EnterprisePlantRuntime />

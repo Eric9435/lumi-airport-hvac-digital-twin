@@ -39,7 +39,7 @@ describe("LUMI Nexus replay console", () => {
 
     expect(componentSource).toContain('cache: "no-store"');
 
-    expect(componentSource).toContain("loadSnapshot(0)");
+    expect(componentSource).toContain("loadSnapshot(currentIndex)");
   });
 
   it("schedules initial replay loading outside the synchronous effect body", () => {
@@ -47,7 +47,7 @@ describe("LUMI Nexus replay console", () => {
       "const initialLoadTimer = window.setTimeout",
     );
 
-    expect(componentSource).toContain("void loadSnapshot(0)");
+    expect(componentSource).toContain("void loadSnapshot(currentIndex)");
 
     expect(componentSource).toContain("window.clearTimeout(initialLoadTimer)");
 
@@ -82,6 +82,16 @@ describe("LUMI Nexus replay console", () => {
     expect(componentSource).not.toContain("setPlaying(");
 
     expect(componentSource).not.toContain("const [playing");
+  });
+
+  it("delegates automatic advancement to the global runtime", () => {
+    expect(componentSource).toContain("NEXUS_REPLAY_SNAPSHOT_EVENT");
+
+    expect(componentSource).toContain("handleRuntimeSnapshot");
+
+    expect(componentSource).not.toContain("selectedSpeed.delayMs");
+
+    expect(componentSource).not.toContain("void loadSnapshot(0)");
   });
 
   it("provides complete replay controls", () => {
