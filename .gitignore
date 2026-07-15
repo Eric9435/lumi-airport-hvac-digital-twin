@@ -100,3 +100,9 @@ next.config.ts.backup
 
 !.env.example
 .fix-backups/
+
+# Local migration and source backups
+*.backup-*
+*.bak
+*.tmp
+.fix-backups/
