@@ -30,6 +30,8 @@ import {
   YAxis,
 } from "recharts";
 
+import { NexusEngineeringAnalytics } from "@/components/nexus/command-center/nexus-engineering-analytics";
+
 import {
   NEXUS_REPLAY_SPEED_OPTIONS,
   isNexusReplaySpeed,
@@ -741,6 +743,8 @@ export function NexusCommandCenter() {
             </ResponsiveContainer>
           </ChartCard>
         </section>
+
+        <NexusEngineeringAnalytics />
 
         <section className="rounded-2xl border border-slate-800 bg-slate-900/75 p-5 shadow-xl shadow-black/15">
           <div className="flex flex-col gap-2 sm:flex-row sm:items-end sm:justify-between">
