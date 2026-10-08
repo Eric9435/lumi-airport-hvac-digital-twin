@@ -1,36 +1,70 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+# LUMI Airport HVAC Digital Twin
 
-## Getting Started
+A virtual airport HVAC platform that combines plant simulation, equipment dashboards, flight/passenger demand, alarms, energy analysis, and maintenance workflows.
 
-First, run the development server:
+**Operating mode: virtual simulation.** This project does not establish physical HVAC control or a calibrated model of a particular airport.
+
+## Features
+
+- Chiller, chilled-water/condenser-water pump, cooling-tower, and AHU-zone models.
+- Flight/passenger-driven demand and time-step simulation.
+- Plant/equipment views, trends, energy summaries, and alarms.
+- Scenario commands, maintenance work orders, reports, and audit routes.
+- LUMI analysis/command interface.
+- Optional Google Apps Script/Sheets persistence and AI configuration.
+- Health, readiness, and version API endpoints.
+
+## Stack
+
+Next.js 16, React 19, TypeScript, Zustand, Recharts, Zod, Tailwind CSS, and Vitest. Docker and GitHub Actions configuration are included.
+
+## Local development
+
+Use Node.js 22 or newer and npm:
+
+```bash
+git clone https://github.com/Eric9435/lumi-airport-hvac-digital-twin.git
+cd lumi-airport-hvac-digital-twin
+npm ci
+cp .env.example .env.local
+```
+
+Set a unique `SESSION_SECRET` and replace the example initial-admin credentials in `.env.local`. Configure optional Google Apps Script and OpenAI values only when using those integrations.
 
 ```bash
 npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
 ```
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+Open http://localhost:3000.
 
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
+## Verification and build
 
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
+```bash
+npm run validate
+```
 
-## Learn More
+This script runs TypeScript checks, ESLint, Vitest, and a production build. `npm run ci:check` additionally checks formatting. These commands describe available checks; no fresh runtime verification is claimed by this documentation update.
 
-To learn more about Next.js, take a look at the following resources:
+After a successful build, run `npm run start`. Check `/api/health`, `/api/system/readiness`, and `/api/system/version` on the local server.
 
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
+## Architecture
 
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
+| Path | Responsibility |
+| --- | --- |
+| `src/app/` | UI routes and API handlers |
+| `src/lib/simulation/` | Initial state, calculations, and tick engine |
+| `docs/architecture/` | System and data-flow design |
+| `docs/google-apps-script/` | Apps Script source and sheet structure |
+| `docs/security/` | Security and access model |
+| `docs/operations/` | Operational runbook |
+| `docs/testing/` | Testing strategy |
 
-## Deploy on Vercel
+## Configuration and limits
 
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
+External integrations require your own endpoints and credentials. Simulation dynamics and risk calculations include heuristics and should be validated against reference cases before engineering decisions. Production deployment needs credential review, access controls, persistence, backups, and commissioning appropriate to the intended environment.
 
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+See the [system architecture](docs/architecture/SYSTEM_ARCHITECTURE.md), [operations runbook](docs/operations/RUNBOOK.md), and [testing strategy](docs/testing/TESTING_STRATEGY.md).
+
+## Maintainer
+
+[Aung Phone Myat (Eric)](https://github.com/Eric9435)
